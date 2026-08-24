@@ -118,7 +118,7 @@ Current host: dedicated x86-64 laptop, Windows 11 Enterprise 25H2, 512 GB SSD. I
 - **DONE** — APL-IP-002-WIN/LNX/MAC/FINAL.
 - **DONE** — APL-IP-003 canonical source refactor, Slices 1-23.
 - **DONE** — APL-IP-004 third-party full-license bundle engineering for newly built promoted Windows portable/installer, Debian `.deb` and macOS `.app`/DMG lanes.
-- **HISTORICAL RECONCILIATION DONE** — candidate `ef9846e151a2e4e7046169e0787603969018cc97` was correctly reconciled after APL-IP-004.
+- **[Web] DONE — post-APL-IP-004 review reconciliation** — candidate `ef9846e151a2e4e7046169e0787603969018cc97` was correctly reconciled against the APL-IP-004 state; this remains truthful historical evidence and did not grant legal approval.
 - **CURRENT DRIFT** — installer implementation then changed in #171/#172, so `ef9846e...` must not be treated as the final clean-IP candidate for the current installer state.
 - **[Web] CURRENT** — post-#172 exact candidate/evidence reconciliation: select a current candidate, prove carry-forward of significant-source review where valid, regenerate/rebind provenance/SBOM/package evidence and explicitly record #172 installer changes.
 - **[Human] PARALLEL**:
