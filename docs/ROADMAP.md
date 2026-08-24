@@ -132,7 +132,7 @@ Current host: dedicated x86-64 laptop, Windows 11 Enterprise 25H2, 512 GB SSD. I
   - R-2 actual Rospatent registration/transfer status;
   - R-3 applicable corporate/interested-transaction basis/approval/exception;
   - factual provenance confirmation for the final selected candidate and explicit authorized decision.
-- **[Web] after explicit APPROVED — clean-IP baseline/tag** for the exact approved candidate only.
+- **[Web after explicit APPROVED] — create governed clean-IP baseline/tag** for the exact approved candidate only.
 - **OPTIONAL / HOLD** — AppImage L-2 clearance only if AppImage later enters promoted commercial scope.
 
 ## 6. Per-application routing
