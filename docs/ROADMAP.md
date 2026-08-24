@@ -33,16 +33,21 @@ Status legend:
   3. mirrors/prunes normal branches and tags while excluding GitHub-only `refs/pull/*`;
   4. fail-closes if GitVerse `main` differs from canonical GitHub `main` or if GitVerse default branch is not `main`;
   5. publishes commit status `gitverse-mirror=success` on the exact verified canonical GitHub `main` SHA.
-- Verified mirror run: GitHub Actions run `32767806496`; all mirror steps PASS, including canonical branch reconciliation and status publication.
-- Verified canonical SHA at that recovery point: `ad36d928777af3a583de32e3917bf6f6088e6144` with `gitverse-mirror=success`.
+- Recovery verification PASS: GitHub Actions run `32767806496` reconciled GitVerse canonical branch/default branch successfully.
+- Post-governance-merge verification PASS: canonical GitHub `main` `c888690928d61e03532de2a023d7870af52354e8` received `gitverse-mirror=success` from run `32769207494`.
 
 ### GitHub `main` protection after migration
 
-- **ADMIN PENDING / REAL REGRESSION CONFIRMED**.
-- GitHub branch API currently reports `main.protected=false`, protection disabled, and no required status checks.
-- This confirms the pre-migration branch-protection contract did not survive the repository/owner migration.
-- Desired restored contract remains:
-  - PR required; approvals required = 0;
+- **DONE / VERIFIED 2026-08-24** — the protection regression caused by owner/repository migration was detected, restored by the repository owner/admin, and accepted through a real negative merge test.
+- Pre-restoration evidence: GitHub reported `main.protected=false`; protection had not survived migration.
+- Post-restoration evidence: GitHub branch API reports `main.protected=true`.
+- The authenticated connected GitHub identity `arvectum1` has repository permission `admin`.
+- Acceptance PR: `#3 test(governance): verify restored main protection`.
+- Negative test PASS: an immediate normal merge attempt while required `build` was running was rejected by GitHub with HTTP `405 Repository rule violations found` and `Required status check "build" is in progress.`
+- Therefore the required `build` gate is actively enforced even for the connected admin identity through the normal merge path.
+- Recovery contract remains:
+  - PR-based changes to `main`;
+  - approvals required = 0;
   - required status check `build`;
   - strict/up-to-date required checks;
   - conversation resolution required;
@@ -50,8 +55,8 @@ Status legend:
   - branch deletion disabled;
   - administrator/bypass policy must not silently defeat the gate during normal operation.
 - Exact recovery/verification runbook: `docs/GITHUB_MAIN_PROTECTION_RECOVERY.md`.
-- The currently available GitHub connector can verify branch-protection state but exposes no branch-protection/ruleset administration mutation; no separate GitHub-admin plugin or repository admin-token workflow is available. Therefore the Settings save is a repository-owner/admin boundary and must not be mislabeled as automated PASS.
-- **After admin save:** re-read GitHub branch API and perform a negative merge test while `build` is queued. Only then mark protection **DONE**.
+- Acceptance evidence: `docs/evidence/GITHUB_MAIN_PROTECTION_ACCEPTANCE_2026-08-24.md`.
+- Tooling note: the connected identity is an admin, but the current ChatGPT GitHub connector exposes no repository-ruleset/branch-protection mutation action and rejects direct `/rules/...` fetches. This is a connector action-whitelist limitation, not a GitHub permission limitation.
 
 ## 1. Proven Windows/core/release baseline
 
@@ -127,7 +132,7 @@ Current host: dedicated x86-64 laptop, Windows 11 Enterprise 25H2, 512 GB SSD. I
   - R-2 actual Rospatent registration/transfer status;
   - R-3 applicable corporate/interested-transaction basis/approval/exception;
   - factual provenance confirmation for the final selected candidate and explicit authorized decision.
-- **[Web after explicit APPROVED]** — create governed clean-IP baseline/tag for the exact approved candidate only.
+- **[Web after explicit APPROVED] — create governed clean-IP baseline/tag** for the exact approved candidate only.
 - **OPTIONAL / HOLD** — AppImage L-2 clearance only if AppImage later enters promoted commercial scope.
 
 ## 6. Per-application routing
@@ -165,13 +170,12 @@ Future branches after the decision: Linux cgroup/socket+nftables/policy-routing 
 1. **CURRENT — APL-IP-001 post-#172 exact candidate/evidence reconciliation.**
 2. **READY — APL-WIN-014 previous sealed 0.2.2 baseline artifact/evidence recovery.**
 3. **DONE — GitHub -> GitVerse mirror recovery/verification.**
-4. **AFTER ADMIN ACTION — verify restored GitHub `main` protection by API + negative queued-`build` merge test.**
+4. **DONE — GitHub `main` protection restoration/acceptance after owner migration.**
 5. **READY / optional — APL-ROUTE-003 product/architecture decision work.**
 
 ### [Human/Admin]
 
-1. **CURRENT — restore GitHub `main` branch protection/rules using `docs/GITHUB_MAIN_PROTECTION_RECOVERY.md`.**
-2. **PARALLEL — R-1/R-2/R-3 and final IP/legal factual sign-off preparation.**
+Repository `main` protection has no remaining migration-recovery action. R-1/R-2/R-3 and final IP/legal factual sign-off preparation remain available in parallel.
 
 ### [Win] ARVECTUM-DEMO
 
@@ -189,15 +193,16 @@ No release-critical local acceptance task remains.
 
 ## 9. Recommended parallel execution
 
-Run four streams without blocking one another:
+Run three active streams without blocking one another:
 
 - **A — [Web]** post-#172 IP candidate/evidence reconciliation;
 - **B — [Web + Win]** recover sealed 0.2.2 baseline and execute APL-WIN-014;
-- **C — [Human]** R-1/R-2/R-3 legal/IP facts;
-- **D — [Human/Admin -> Web verify]** restore GitHub `main` protection, then verify it through API and a negative merge test.
+- **C — [Human]** R-1/R-2/R-3 legal/IP facts.
+
+Repository-owner migration governance (GitVerse mirror + GitHub `main` protection) is now **DONE** and no longer occupies an active stream.
 
 After Windows App Control / exact signed-set evidence are closed, convert ARVECTUM-DEMO to persistent Windows+Astra dual boot and execute **APL-LNX-010 -> Gate R8**.
 
 ## Completion discipline
 
-Real-host, human/legal and repository-admin gates remain pending until their named evidence exists. Do not substitute CI, mocks, screenshots or same-version repair for required physical/cross-version acceptance. Historical evidence remains immutable; later installer/compliance changes require explicit candidate/evidence rebinding. GitHub `main` is the source authority; GitVerse is a verified mirror, not an independent competing source of truth.
+Real-host and human/legal gates remain pending until their named evidence exists. Do not substitute CI, mocks, screenshots or same-version repair for required physical/cross-version acceptance. Historical evidence remains immutable; later installer/compliance changes require explicit candidate/evidence rebinding. GitHub `main` is the source authority; GitVerse is a verified mirror, not an independent competing source of truth. Repository protection after owner migration is accepted only from the observed protected branch state plus a real rule-enforced negative merge test, both of which passed on 2026-08-24.
