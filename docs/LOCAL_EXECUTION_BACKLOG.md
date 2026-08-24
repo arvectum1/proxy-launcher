@@ -88,7 +88,7 @@ Only explicit `APPROVED` unlocks the Web clean-IP baseline/tag.
 
 ## P3 — repository / GitVerse governance verification
 
-Status: **WEB VERIFICATION REQUIRED**.
+Status: **WEB/MANUAL GOVERNANCE VERIFICATION REQUIRED**.
 
 GitHub authority is now `arvectum1/proxy-launcher` / `main`. The GitHub->GitVerse mirror workflow was repaired on 2026-08-24. Verify that:
 
@@ -96,6 +96,8 @@ GitHub authority is now `arvectum1/proxy-launcher` / `main`. The GitHub->GitVers
 - intended release tags/branches reach GitVerse;
 - GitVerse default/canonical branch presentation does not cause `master` to be mistaken for current source authority;
 - no history rewrite or silent branch divergence is introduced.
+
+Also verify/reinstate the pre-migration GitHub protection/governance contract. During roadmap reconciliation PR #1 could be merged while its Actions workflows were still queued. This is evidence that the new repository's effective merge controls must be checked rather than assumed. Confirm in GitHub settings that the intended `main` rules still require PR-based changes, the required `build`/other chosen checks, strictness/conversation resolution as intended, no force-push/delete, and the desired administrator enforcement/bypass policy. Record the resulting protection state as evidence.
 
 ## P4 — AppImage L-2 — OPTIONAL / HOLD
 
@@ -126,7 +128,8 @@ Architecture/product research is Web-executable now. Native production implement
 1. post-#172 APL-IP-001 exact candidate/evidence reconciliation;
 2. recover/reconcile a trustworthy sealed previous Windows package/evidence for APL-WIN-014 cross-version proof;
 3. verify GitHub `main` -> GitVerse mirror/canonical branch state;
-4. optional APL-ROUTE-003 architecture decision work.
+4. verify/reinstate GitHub `main` branch protection/rules after repository migration;
+5. optional APL-ROUTE-003 architecture decision work.
 
 ### [Win] ARVECTUM-DEMO
 
@@ -148,4 +151,4 @@ No release-critical local task. Only deferred signing/notarization/sovereignty h
 
 ## Completion discipline
 
-Do not relabel physical App Control, cross-version upgrade, Astra, exact signed-set or human/legal gates as complete from CI, mocks or documentation. Keep historical artifacts/evidence immutable, and rebind clean-IP evidence whenever product/package implementation changes after a selected candidate.
+Do not relabel physical App Control, cross-version upgrade, Astra, exact signed-set or human/legal gates as complete from CI, mocks or documentation. Keep historical artifacts/evidence immutable, and rebind clean-IP evidence whenever product/package implementation changes after a selected candidate. Do not assume repository protection survived owner/repository migration until the effective rules have been verified.
