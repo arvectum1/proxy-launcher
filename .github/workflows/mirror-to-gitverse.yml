@@ -12,6 +12,7 @@ on:
 
 permissions:
   contents: read
+  statuses: write
 
 concurrency:
   group: mirror-to-gitverse
@@ -43,7 +44,7 @@ jobs:
             "https://x-access-token:${GH_TOKEN}@github.com/${GH_REPOSITORY}.git" \
             repository.git
 
-      - name: Push branches and tags to GitVerse
+      - name: Reconcile GitVerse canonical branch and mirror refs
         env:
           GITVERSE_TOKEN: ${{ secrets.GITVERSE_TOKEN }}
           GITVERSE_REPOSITORY: ${{ vars.GITVERSE_REPO }}
@@ -54,11 +55,86 @@ jobs:
           git remote add gitverse \
             "https://arvectum:${GITVERSE_TOKEN}@gitverse.ru/arvectum/${GITVERSE_REPOSITORY}.git"
 
-          # Mirror only normal branches and tags.
-          # GitHub-specific refs/pull/* are intentionally excluded.
+          # The migrated GitHub repository is canonical on refs/heads/main. GitVerse
+          # historically used master as its default branch, which prevents a prune
+          # mirror from deleting master before main becomes the default. Seed main
+          # first, switch the GitVerse default branch through its public API, then
+          # perform the normal same-name branches/tags mirror.
+          git push --force gitverse \
+            'refs/heads/main:refs/heads/main'
+
+          curl --fail-with-body --silent --show-error \
+            -X PATCH \
+            -H "Authorization: Bearer ${GITVERSE_TOKEN}" \
+            -H 'Accept: application/vnd.gitverse.object+json;version=latest' \
+            -H 'Content-Type: application/json' \
+            --data '{"default_branch":"main"}' \
+            "https://api.gitverse.ru/repos/arvectum/${GITVERSE_REPOSITORY}" \
+            >/tmp/gitverse-repository-update.json
+
+          # Mirror only normal branches and tags. GitHub-specific refs/pull/* are
+          # intentionally excluded. After default_branch=main, stale master can be
+          # pruned safely if it no longer exists on GitHub.
           git push --force --prune gitverse \
             'refs/heads/*:refs/heads/*' \
             'refs/tags/*:refs/tags/*'
+
+          expected_main="$(git rev-parse refs/heads/main)"
+          remote_main="$(git ls-remote gitverse refs/heads/main | awk '{print $1}')"
+          test -n "$remote_main" || { echo "::error::GitVerse main is missing after mirror"; exit 1; }
+          test "$remote_main" = "$expected_main" || {
+            echo "::error::GitVerse main does not match canonical GitHub main"
+            echo "expected=$expected_main"
+            echo "actual=$remote_main"
+            exit 1
+          }
+
+          curl --fail-with-body --silent --show-error \
+            -H "Authorization: Bearer ${GITVERSE_TOKEN}" \
+            -H 'Accept: application/vnd.gitverse.object+json;version=latest' \
+            "https://api.gitverse.ru/repos/arvectum/${GITVERSE_REPOSITORY}" \
+            >/tmp/gitverse-repository.json
+
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          data = json.loads(Path('/tmp/gitverse-repository.json').read_text(encoding='utf-8'))
+          default_branch = data.get('default_branch')
+          if default_branch != 'main':
+              raise SystemExit(f'GitVerse default_branch mismatch: expected main, got {default_branch!r}')
+          PY
+
+          echo "MIRRORED_MAIN_SHA=${expected_main}" >> "$GITHUB_ENV"
+
+      - name: Publish verified mirror status on canonical main
+        if: success()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPOSITORY: ${{ github.repository }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY' >/tmp/gitverse-status.json
+          import json
+          import os
+
+          print(json.dumps({
+              "state": "success",
+              "context": "gitverse-mirror",
+              "description": "GitVerse main/default branch verified against canonical GitHub main",
+              "target_url": os.environ["RUN_URL"],
+          }))
+          PY
+          curl --fail-with-body --silent --show-error \
+            -X POST \
+            -H "Authorization: Bearer ${GH_TOKEN}" \
+            -H 'Accept: application/vnd.github+json' \
+            -H 'X-GitHub-Api-Version: 2022-11-28' \
+            -H 'Content-Type: application/json' \
+            --data-binary @/tmp/gitverse-status.json \
+            "https://api.github.com/repos/${GH_REPOSITORY}/statuses/${MIRRORED_MAIN_SHA}" \
+            >/tmp/github-mirror-status.json
 
       - name: Summary
         if: success()
@@ -68,5 +144,7 @@ jobs:
           echo "### GitVerse mirror updated" >> "$GITHUB_STEP_SUMMARY"
           echo "- Source: ${GITHUB_REPOSITORY}" >> "$GITHUB_STEP_SUMMARY"
           echo "- Target: arvectum/${GITVERSE_REPOSITORY}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Canonical/default branch: main" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Verified main SHA: ${MIRRORED_MAIN_SHA}" >> "$GITHUB_STEP_SUMMARY"
           echo "- Trigger: ${GITHUB_EVENT_NAME}" >> "$GITHUB_STEP_SUMMARY"
-          echo "- SHA: ${GITHUB_SHA}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Event SHA: ${GITHUB_SHA}" >> "$GITHUB_STEP_SUMMARY"
