@@ -1,167 +1,151 @@
 # Arvectum Proxy Launcher — remaining local / human / infrastructure backlog
 
-Updated: 2026-08-22
+Updated: 2026-08-24
+Canonical GitHub repository: `arvectum1/proxy-launcher`
 
-This file contains work that cannot be truthfully completed by hosted repository automation alone. The protected customer-proven Windows `0.2.3` system-proxy baseline remains the behavioral reference.
+This file contains work that cannot be truthfully completed by hosted repository automation alone, plus the immediate local prerequisites for those gates.
 
-## P0 — Windows physical acceptance stand
+## P0 — ARVECTUM-DEMO Windows physical stand
 
-A separate x86-64 laptop with a 512 GB SSD is now available. Its current OS is **Windows 10**. The intended permanent end state is **Windows 11 + Astra Linux Special Edition 1.8 x86-64 dual boot**.
+Current stand:
 
-Canonical stand runbook: `docs/PHYSICAL_WINDOWS_ASTRA_DUAL_BOOT_STAND.md`.
+- x86-64 physical laptop;
+- Windows 11 Enterprise 25H2;
+- 512 GB SSD;
+- portable real-host functionality: PASS;
+- installer transition defect #171: fixed by #172 / `e2be3445e23eb6e8f0709f37fec0ecba50447dc7`;
+- fixed installer over active portable: PASS;
+- uninstall: PASS;
+- fresh reinstall: PASS;
+- persistent proxy settings survived the lifecycle test.
 
-### P0.1 Controlled Windows build inputs — DONE
+Target permanent state: Windows 11 + Astra Linux SE 1.8 x86-64 dual boot.
 
-Status: **DONE / CLOSED**.
+### P0.1 — APL-WIN-014 App Control for Business — CURRENT
 
-Canonical governed archive:
+Status: **REAL HOST AVAILABLE / FINAL EVIDENCE PENDING**.
 
-- `arvectum-windows-build-inputs-cpython-3.12.10-x64.zip`;
-- bytes: `30996168`;
-- SHA-256: `4a55f101bdd15a956c9bc4249fdbb694abadd682a3340c0f5ef08c174880a886`;
-- CPython `3.12.10` x64;
-- exactly eight approved Windows x64 wheels;
-- canonical evidence: `docs/evidence/P0_1_COMPLETION_EVIDENCE.json`.
-
-### P0.2 Independent clean-machine endpoint-denied rebuild — READY BUT DEFERRED
-
-Status: **READY / HOST AVAILABLE — DEFERRED / NOT RELEASE BLOCKER**.
-
-If executed on the new laptop:
-
-1. first prove official Windows 11 eligibility and move the machine from Windows 10 to Windows 11;
-2. preferably use a clean/reset Windows 11 baseline;
-3. execute before installing Proxy Launcher for lifecycle tests and before changing the disk to dual boot;
-4. use only governed P0.1 CPython/wheelhouse inputs plus the frozen source authority;
-5. deny public package/source endpoints during the recovery build;
-6. run full tests, package contracts, SBOM and artifact comparison;
-7. export evidence outside the stand.
-
-If this window is missed, keep P0.2 deferred rather than forcing another reinstall. The abandoned VM path remains historical evidence only.
-
-### P0.3 Windows 10 → Windows 11 stand preparation — ACTIVE
+Use `docs/APL_WIN_014_LOCAL_GATE.md`.
 
 Required local boundary:
 
-1. record hardware/firmware inventory;
-2. verify UEFI/Secure Boot capability, TPM 2.0 and supported CPU;
-3. preserve any BitLocker/device-encryption recovery material before firmware/disk changes;
-4. upgrade or clean-install Windows 11;
-5. for full APL-WIN-014 coverage, use Windows 11 Pro, Enterprise or Education;
-6. capture the clean Windows 11 baseline before product installation.
+1. recover/verify a distinct sealed previous Windows installer (prefer the actual retained 0.2.2 release if available) and its governed Setup/application hashes;
+2. generate the current 0.2.3 `ReferenceFullHash` trust pack;
+3. deploy current and baseline supplemental trust through the lab/customer App Control management path;
+4. keep the base policy actually enforced;
+5. run `tools/windows_app_control_local_gate_complete.ps1`;
+6. require both subordinate enforced and real cross-version upgrade PASS records;
+7. require no tested Arvectum Code Integrity 3077 denial and preserve the enforced policy after the test;
+8. export/hash-verify evidence outside the laptop.
 
-### P0.4 APL-WIN-014 real App Control acceptance — READY AFTER P0.3
+Do not replace the cross-version requirement with same-version repair and do not manufacture a historical baseline.
 
-Repository tooling is complete. Real completion requires the separate Windows 11 Pro/Enterprise/Education stand.
+### P0.2 — APL-REL-014 exact signed-set lifecycle — PARTIAL / READY
 
-Do not execute destructive policy work on the normal owner workstation.
+Real installer transition/uninstall/fresh-reinstall behavior has passed after #172. Keep the exact governed signed-set lifecycle/recovery acceptance pending until its canonical evidence identifies the exact signed artifacts, recovery states and required upgrade/recovery results.
 
-### P0.5 APL-REL-014 exact signed-set lifecycle acceptance — READY AFTER P0.3
+Complete on ARVECTUM-DEMO before Linux repartitioning if still outstanding, then export evidence.
 
-On the same physical stand execute the exact governed release set through:
+### P0.3 — P0.2 independent clean-machine endpoint-denied rebuild — DEFERRED
 
-- fresh install;
-- upgrade/repair;
-- uninstall;
-- rollback/recovery;
-- final diagnostics/evidence collection.
+The laptop is no longer an untouched clean baseline because product acceptance has already been executed. Do not force a reinstall merely to close this resilience drill. Keep it deferred until a naturally suitable clean environment is available.
 
-Export and hash-verify evidence before Linux repartitioning.
+## P1 — Astra Linux / Gate R8 — READY AFTER WINDOWS-ONLY GATES
 
-## P1 — Astra Linux real acceptance / Gate R8
+On the same laptop:
 
-Status: **READY / HOST AVAILABLE AFTER WINDOWS-ONLY PHASE**.
-
-The same physical laptop becomes a persistent dual-boot Linux stand without deleting Windows.
-
-Required sequence:
-
-1. complete/export any Windows clean-host evidence first;
-2. disable Windows Fast Startup/hibernation;
-3. shrink Windows `C:` from Windows Disk Management and leave Linux space unallocated;
-4. install Astra Linux Special Edition 1.8 x86-64 using manual GPT/UEFI partitioning;
-5. preserve existing EFI System Partition, Windows NTFS, MSR and Recovery partitions;
-6. create Astra ext4 root in the unallocated space;
-7. verify both Windows Boot Manager and Astra boot successfully;
-8. capture clean Astra baseline;
-9. run `bash qa/collect_astra_acceptance_preflight.sh`;
-10. execute APL-LNX-010 real `.deb` acceptance matrix;
-11. close Gate R8 only from real Astra-host PASS evidence.
+1. finish/export Windows App Control and remaining exact signed-set evidence;
+2. preserve BitLocker/device-encryption recovery material if applicable;
+3. disable Windows Fast Startup/hibernation;
+4. shrink Windows `C:` using Windows Disk Management and leave Astra space unallocated;
+5. install Astra Linux Special Edition 1.8 x86-64 with manual GPT/UEFI partitioning;
+6. reuse the existing EFI System Partition without formatting it;
+7. preserve Windows NTFS/MSR/Recovery partitions and Windows Boot Manager;
+8. create Astra ext4 root in unallocated space;
+9. verify both Windows 11 and Astra boot;
+10. capture Astra baseline;
+11. run `bash qa/collect_astra_acceptance_preflight.sh`;
+12. execute APL-LNX-010 real `.deb` acceptance: GUI/runtime detection, NetworkManager/PolicyKit, enable/sync/disable, rollback, autostart, crash/reboot recovery, update/remove and diagnostics/privacy;
+13. close Gate R8 only from real Astra-host PASS evidence.
 
 Ubuntu CI or another distro is not a substitute.
 
-## P2 — APL-IP-001 final post-refactor human/legal sign-off
+## P2 — APL-IP-001 final human/legal boundary
 
-Status: **CONDITIONAL / HUMAN-LEGAL PENDING**.
+Status: **HUMAN/LEGAL PENDING**.
 
-Engineering state:
+Engineering note: the previous post-APL-IP-004 candidate `ef9846e...` is no longer sufficient as the final clean-IP candidate because installer implementation changed in #172 afterwards. Hosted work must first select/rebind a current post-#172 exact candidate/evidence set.
 
-- APL-IP-003 Slices 1–23: complete;
-- refactor-review anchor candidate: `8ad54018e6d6251c906a06d09fd464c8931c14b2`;
-- post-refactor review packet: merged PR #166;
-- APL-IP-004 promoted-artifact license-bundle engineering remediation: merged PR #167;
-- AppImage L-2 commercial-promotion hold remains.
+Human/legal tasks can proceed in parallel with that Web reconciliation:
 
-Required human/legal boundary:
+1. R-1 — execute/verify author -> ООО «Арвектум» rights basis and retain stable non-secret evidence reference;
+2. R-2 — record actual Rospatent registration/transfer status;
+3. R-3 — record actual corporate/interested-transaction basis/approval/exception;
+4. confirm factual provenance for the finally selected exact candidate;
+5. sign explicit final `APPROVED`, `CONDITIONAL` or `HOLD`.
 
-1. execute/verify author → ООО «Арвектум» rights basis (R-1);
-2. record actual Rospatent registration/transfer status (R-2);
-3. record applicable corporate/interested-transaction basis/approval/exception (R-3);
-4. confirm factual post-refactor provenance;
-5. select the promoted artifact scope;
-6. sign an explicit final `APPROVED`, `CONDITIONAL` or `HOLD` decision.
+Only explicit `APPROVED` unlocks the Web clean-IP baseline/tag.
 
-Because APL-IP-004 changed compliance tooling after the APL-IP-003 review anchor, final clean-IP approval must be rebound to a new exact **post-APL-IP-004** candidate and current evidence. Do not tag `8ad54018...` as if it contained APL-IP-004.
+## P3 — repository / GitVerse governance verification
 
-After explicit `APPROVED`, hosted repository work may create the governed clean-IP baseline/tag.
+Status: **WEB VERIFICATION REQUIRED**.
 
-## P3 — AppImage L-2 downstream compliance — OPTIONAL / HOLD
+GitHub authority is now `arvectum1/proxy-launcher` / `main`. The GitHub->GitVerse mirror workflow was repaired on 2026-08-24. Verify that:
 
-AppImage remains excluded from promoted commercial scope until the pinned type-2 runtime/transitive obligations are separately reviewed and packaged, including the applicable LGPL/libfuse path and other statically linked runtime components.
+- current GitHub `main` reaches GitVerse;
+- intended release tags/branches reach GitVerse;
+- GitVerse default/canonical branch presentation does not cause `master` to be mistaken for current source authority;
+- no history rewrite or silent branch divergence is introduced.
 
-This does not block `.deb` as the preferred Astra/Linux distribution lane.
+## P4 — AppImage L-2 — OPTIONAL / HOLD
 
-## P4 — APL-ROUTE-003 Windows per-application routing product decision
+AppImage stays outside promoted commercial scope until the pinned type-2 runtime/transitive obligations and applicable LGPL/libfuse path are separately cleared. This does not block Debian `.deb` or Astra acceptance.
 
-Production WFP connect-redirection remains a STOP-GATE until one path is chosen:
+## P5 — APL-ROUTE-003 product decision — READY / STOP-GATE
+
+Before production Windows per-app enforcement choose one:
 
 1. Microsoft Hardware Dev Center + accepted EV identity dependency;
 2. separately reviewed already-signed third-party component;
-3. supported user-mode architecture with equivalent semantics;
+3. supported user-mode equivalent semantics;
 4. defer Windows per-app routing.
 
-Do not use test-signing/developer mode as a production workaround.
+Architecture/product research is Web-executable now. Native production implementation remains blocked until the choice is explicit.
 
-## P5 — controlled Linux/macOS build-input mirrors
+## P6 — deferred sovereignty hardening
 
-Status: **DEFERRED / MEDIUM PRIORITY**.
-
-- archive pinned platform build inputs;
-- add immutable hashes/recovery instructions;
-- run endpoint-denied rebuild proofs when useful.
+- Windows independent endpoint-denied rebuild in a future naturally clean environment;
+- controlled Linux build-input mirror + endpoint-denied rebuild;
+- controlled macOS build-input mirror + endpoint-denied rebuild;
+- later Apple/Microsoft international signing/notarization paths.
 
 ## Current parallel execution order
 
-### Track A — repository/IP
+### [Web]
 
-1. **[Web] select/rebind a post-APL-IP-004 exact candidate and regenerate current provenance/SBOM/promoted-artifact evidence.**
-2. **[Human] in parallel complete R-1/R-2/R-3 and authorized final sign-off facts.**
-3. **[Web] create clean-IP baseline/tag only after explicit APPROVED.**
+1. post-#172 APL-IP-001 exact candidate/evidence reconciliation;
+2. recover/reconcile a trustworthy sealed previous Windows package/evidence for APL-WIN-014 cross-version proof;
+3. verify GitHub `main` -> GitVerse mirror/canonical branch state;
+4. optional APL-ROUTE-003 architecture decision work.
 
-### Track B — physical laptop
+### [Win] ARVECTUM-DEMO
 
-1. **[Win] inventory Windows 10 and prove Windows 11 eligibility.**
-2. **[Win] upgrade/clean-install Windows 11; target Pro/Enterprise/Education.**
-3. **[Win] optional P0.2 before product/repartitioning.**
-4. **[Win] APL-WIN-014 and APL-REL-014.**
-5. **[Win] export evidence.**
-6. **[Win/Linux] create persistent dual boot.**
-7. **[Linux] Astra SE 1.8 → APL-LNX-010 → Gate R8.**
+1. APL-WIN-014 App Control final gate when the baseline artifact/trust prerequisite is ready;
+2. close any remaining APL-REL-014 exact signed-set lifecycle evidence;
+3. export/hash-verify Windows evidence.
 
-### Track C — architecture decision
+### [Human]
 
-- **[Web/Decision] APL-ROUTE-003** may be researched in parallel but production native enforcement remains blocked pending the explicit product/signing choice.
+R-1/R-2/R-3 and final factual/legal sign-off preparation can run now in parallel.
+
+### [Linux] ARVECTUM-DEMO
+
+After Windows-only gates: create dual boot, install Astra SE 1.8, execute APL-LNX-010 and close Gate R8.
+
+### [Mac]
+
+No release-critical local task. Only deferred signing/notarization/sovereignty hardening or later per-app routing.
 
 ## Completion discipline
 
-Do not relabel real-host or human/legal gates as complete from CI, mocks or documentation. Do not retroactively attribute newer APL-IP-004 compliance controls to historical artifacts. Preserve the normal owner workstation from destructive WIN-014/REL-014 testing.
+Do not relabel physical App Control, cross-version upgrade, Astra, exact signed-set or human/legal gates as complete from CI, mocks or documentation. Keep historical artifacts/evidence immutable, and rebind clean-IP evidence whenever product/package implementation changes after a selected candidate.
