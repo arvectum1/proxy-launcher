@@ -17,19 +17,19 @@ This file records verification of the restored `main` protection contract.
 
 PR: `#3 test(governance): verify restored main protection`
 
-PR head at the negative test: `252caeaec601422de1d32d6c7620cfea4d6ea152`.
-
-An immediate merge was attempted while the required `build` check was still running. GitHub rejected the merge with HTTP `405` and the rule violation:
-
-`Required status check "build" is in progress.`
+A normal merge was attempted before the required `build` check completed. GitHub rejected the merge twice during the acceptance sequence with HTTP `405 Repository rule violations found`: once while `build` was `in progress`, and again while the final PR head had `build` `queued`.
 
 Result: **PASS** — required status check `build` is actively enforced by repository rules and cannot be bypassed by the normal merge operation used by the connected admin identity.
 
-## Completion sequence
+## Positive completion
 
-1. Keep PR #3 open until its current required checks complete successfully.
-2. Merge only after the repository rule permits the merge.
-3. Verify resulting canonical `main` receives `gitverse-mirror=success`.
-4. Record the resulting merged SHA in the final task report.
+- Final PR #3 head: `56cfecf27c384591caae32bab53d343d9e6b9085`.
+- All eight final PR workflows completed successfully, including required `build`, SAST, Secret scan, SBOM, APL-IP-001 provenance, dependency vulnerability scan, Windows Russian-first Production Signing, and full Windows installer lifecycle/Gate R6 acceptance.
+- Only after the required `build` became successful, the same normal merge operation was accepted by GitHub.
+- PR #3 merged as canonical `main` commit `adc917e905acca1f8e97d560a3363b07adc279fb`.
+- GitHub branch API continues to report `main.protected=true` on that merged state.
+- The exact merged SHA `adc917e905acca1f8e97d560a3363b07adc279fb` received commit status `gitverse-mirror=success` from mirror workflow run `32771027411`.
+
+Final result: **PASS / OWNER-MIGRATION REPOSITORY GOVERNANCE CLOSED**.
 
 No product/runtime behavior is changed by this acceptance record.
