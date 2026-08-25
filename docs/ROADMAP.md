@@ -1,6 +1,6 @@
 # Arvectum Proxy Launcher — canonical roadmap
 
-Updated: 2026-08-24
+Updated: 2026-08-25
 Canonical GitHub repository: `arvectum1/proxy-launcher`
 Canonical branch: `main`
 Current product line: `0.2.3`
@@ -123,12 +123,13 @@ Current host: dedicated x86-64 laptop, Windows 11 Enterprise 25H2, 512 GB SSD. I
 - **DONE** — APL-IP-002-WIN/LNX/MAC/FINAL.
 - **DONE** — APL-IP-003 canonical source refactor, Slices 1-23.
 - **DONE** — APL-IP-004 third-party full-license bundle engineering for newly built promoted Windows portable/installer, Debian `.deb` and macOS `.app`/DMG lanes.
-- **CONDITIONAL / POST-APL-IP-004 ENGINEERING RECONCILED / HUMAN-LEGAL PENDING** — historical post-APL-IP-004 state remains the truthful governance boundary: engineering reconciliation was complete, but authorized legal approval was not.
-- **[Web] DONE — post-APL-IP-004 review reconciliation** — candidate `ef9846e151a2e4e7046169e0787603969018cc97` was correctly reconciled against the APL-IP-004 state; this remains truthful historical evidence and did not grant legal approval.
-- **CURRENT DRIFT** — installer implementation then changed in #171/#172, so `ef9846e...` must not be treated as the final clean-IP candidate for the current installer state.
-- **[Web] CURRENT** — post-#172 exact candidate/evidence reconciliation: select a current candidate, prove carry-forward of significant-source review where valid, regenerate/rebind provenance/SBOM/package evidence and explicitly record #172 installer changes.
+- **CONDITIONAL / POST-APL-IP-004 ENGINEERING RECONCILED / HUMAN-LEGAL PENDING** — historical post-APL-IP-004 state remains truthful evidence: engineering reconciliation was complete, but authorized legal approval was not.
+- **[Web] DONE — post-APL-IP-004 review reconciliation** — candidate `ef9846e151a2e4e7046169e0787603969018cc97` was correctly reconciled against the APL-IP-004 state; this remains historical evidence and did not grant legal approval.
+- **[Web] DONE — post-#172 exact candidate/evidence reconciliation** — the installer drift introduced by #171/#172 has been explicitly rebound. Selected candidate is merge `adc917e905acca1f8e97d560a3363b07adc279fb`, tree `b36e7dc17830622c510fc7c8b643cfd36bb7fe3f`; validated PR head `56cfecf27c384591caae32bab53d343d9e6b9085` and PR test-merge `73f85f86844f9c8c8a216691b8f9c42d92ca40f7` have the identical tree. Fresh candidate-equivalent APL-IP-001 provenance, SBOM, Windows portable and full Windows installer/#171/Gate R6 workflows all pass. Canonical evidence: `docs/evidence/APL_IP_001_POST_172_CANDIDATE_RECONCILIATION_2026-08-25.md`.
+- **CONDITIONAL / POST-#172 ENGINEERING RECONCILED / HUMAN-LEGAL PENDING** — current canonical sign-off is `docs/APL_IP_001_POST_172_SIGNOFF.md`. The prior `ef9846e...` sign-off is historical only for the superseded installer state.
+- **CURRENT ENGINEERING BOUNDARY** — post-candidate changes through the reconciliation work are governance/documentation/test-only and do not silently move the selected candidate. Any later product-source, build-dependency, packaging/compliance implementation or selected promoted-artifact-content change requires another exact reconciliation.
 - **[Human] PARALLEL**:
-  - R-1 author -> ООО «Арвектум» rights basis;
+  - R-1 author -> ООО «Арвектум» rights basis covering candidate `adc917e...` / tree `b36e7dc...`;
   - R-2 actual Rospatent registration/transfer status;
   - R-3 applicable corporate/interested-transaction basis/approval/exception;
   - factual provenance confirmation for the final selected candidate and explicit authorized decision.
@@ -167,7 +168,7 @@ Future branches after the decision: Linux cgroup/socket+nftables/policy-routing 
 
 ### [Web] ChatGPT/GitHub
 
-1. **CURRENT — APL-IP-001 post-#172 exact candidate/evidence reconciliation.**
+1. **DONE — APL-IP-001 post-#172 exact candidate/evidence reconciliation.**
 2. **READY — APL-WIN-014 previous sealed 0.2.2 baseline artifact/evidence recovery.**
 3. **DONE — GitHub -> GitVerse mirror recovery/verification.**
 4. **DONE — GitHub `main` protection restoration/acceptance after owner migration.**
@@ -195,14 +196,14 @@ No release-critical local acceptance task remains.
 
 Run three active streams without blocking one another:
 
-- **A — [Web]** post-#172 IP candidate/evidence reconciliation;
-- **B — [Web + Win]** recover sealed 0.2.2 baseline and execute APL-WIN-014;
-- **C — [Human]** R-1/R-2/R-3 legal/IP facts.
+- **A — [Web + Win]** recover/reconcile the sealed 0.2.2 baseline and execute APL-WIN-014;
+- **B — [Human]** close R-1/R-2/R-3, confirm candidate factual provenance and make the explicit APL-IP-001 decision;
+- **C — [Web/Decision, optional]** APL-ROUTE-003 product/architecture decision work.
 
-Repository-owner migration governance (GitVerse mirror + GitHub `main` protection) is now **DONE** and no longer occupies an active stream.
+Post-#172 APL-IP-001 hosted reconciliation and repository-owner migration governance are **DONE** and no longer occupy active Web streams.
 
 After Windows App Control / exact signed-set evidence are closed, convert ARVECTUM-DEMO to persistent Windows+Astra dual boot and execute **APL-LNX-010 -> Gate R8**.
 
 ## Completion discipline
 
-Real-host and human/legal gates remain pending until their named evidence exists. Do not substitute CI, mocks, screenshots or same-version repair for required physical/cross-version acceptance. Historical evidence remains immutable; later installer/compliance changes require explicit candidate/evidence rebinding. GitHub `main` is the source authority; GitVerse is a verified mirror, not an independent competing source of truth. Repository protection after owner migration is accepted only from the observed protected branch state plus a real rule-enforced negative merge test, both of which passed on 2026-08-24.
+Real-host and human/legal gates remain pending until their named evidence exists. Do not substitute CI, mocks, screenshots or same-version repair for required physical/cross-version acceptance. Historical evidence remains immutable; later product/build/package implementation changes require explicit candidate/evidence rebinding. GitHub `main` is the source authority; GitVerse is a verified mirror, not an independent competing source of truth. Repository protection after owner migration is accepted only from the observed protected branch state plus a real rule-enforced negative merge test, both of which passed on 2026-08-24.

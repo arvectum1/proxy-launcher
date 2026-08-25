@@ -1,6 +1,6 @@
 # Arvectum Proxy Launcher — remaining local / human / infrastructure backlog
 
-Updated: 2026-08-24
+Updated: 2026-08-25
 Canonical GitHub repository: `arvectum1/proxy-launcher`
 
 This file contains work that cannot be truthfully completed by hosted repository automation alone, plus the immediate local prerequisites for those gates.
@@ -72,19 +72,30 @@ Ubuntu CI or another distro is not a substitute.
 
 ## P2 — APL-IP-001 final human/legal boundary
 
-Status: **HUMAN/LEGAL PENDING**.
+Status: **POST-#172 ENGINEERING RECONCILED / HUMAN-LEGAL PENDING**.
 
-Engineering note: the previous post-APL-IP-004 candidate `ef9846e...` is no longer sufficient as the final clean-IP candidate because installer implementation changed in #172 afterwards. Hosted work must first select/rebind a current post-#172 exact candidate/evidence set.
+Hosted/Web reconciliation is complete. The selected current engineering candidate is:
 
-Human/legal tasks can proceed in parallel with that Web reconciliation:
+- merge commit `adc917e905acca1f8e97d560a3363b07adc279fb`;
+- tree `b36e7dc17830622c510fc7c8b643cfd36bb7fe3f`;
+- candidate-equivalent validated PR head `56cfecf27c384591caae32bab53d343d9e6b9085`;
+- candidate-equivalent PR test-merge `73f85f86844f9c8c8a216691b8f9c42d92ca40f7`;
+- exact evidence: `docs/evidence/APL_IP_001_POST_172_CANDIDATE_RECONCILIATION_2026-08-25.md`;
+- canonical decision record: `docs/APL_IP_001_POST_172_SIGNOFF.md`.
 
-1. R-1 — execute/verify author -> ООО «Арвектум» rights basis and retain stable non-secret evidence reference;
+The earlier `ef9846e...` post-APL-IP-004 candidate remains historical evidence but is superseded for the current installer state because #172 changed installer implementation afterwards.
+
+Remaining human/legal tasks:
+
+1. R-1 — execute/verify author -> ООО «Арвектум» rights basis covering candidate `adc917e...` / tree `b36e7dc...` and retain stable non-secret evidence reference;
 2. R-2 — record actual Rospatent registration/transfer status;
 3. R-3 — record actual corporate/interested-transaction basis/approval/exception;
-4. confirm factual provenance for the finally selected exact candidate;
-5. sign explicit final `APPROVED`, `CONDITIONAL` or `HOLD`.
+4. confirm factual provenance for the selected post-#172 candidate;
+5. sign explicit final `APPROVED`, `CONDITIONAL` or `HOLD` in `docs/APL_IP_001_POST_172_SIGNOFF.md`.
 
-Only explicit `APPROVED` unlocks the Web clean-IP baseline/tag.
+Candidate-binding rights draft addendum is available at `docs/legal/APL_IP_001_RIGHTS_ASSIGNMENT_POST_172_CANDIDATE_ADDENDUM_2026-08-25.md`.
+
+Only explicit `APPROVED` unlocks the Web clean-IP baseline/tag. A material product/build/package implementation change after the selected candidate requires a new exact reconciliation first.
 
 ## P3 — repository / GitVerse governance verification — DONE
 
@@ -129,11 +140,10 @@ Architecture/product research is Web-executable now. Native production implement
 
 ### [Web]
 
-1. post-#172 APL-IP-001 exact candidate/evidence reconciliation;
-2. recover/reconcile a trustworthy sealed previous Windows package/evidence for APL-WIN-014 cross-version proof;
-3. optional APL-ROUTE-003 architecture decision work.
+1. recover/reconcile a trustworthy sealed previous Windows package/evidence for APL-WIN-014 cross-version proof;
+2. optional APL-ROUTE-003 architecture decision work.
 
-Repository/GitVerse owner-migration governance is complete and removed from the active backlog.
+Post-#172 APL-IP-001 reconciliation and repository/GitVerse owner-migration governance are complete and removed from the active Web backlog.
 
 ### [Win] ARVECTUM-DEMO
 
@@ -143,7 +153,7 @@ Repository/GitVerse owner-migration governance is complete and removed from the 
 
 ### [Human]
 
-R-1/R-2/R-3 and final factual/legal sign-off preparation can run now in parallel.
+R-1/R-2/R-3, post-#172 factual-provenance confirmation and final authorized APL-IP-001 decision can run now in parallel.
 
 ### [Linux] ARVECTUM-DEMO
 
@@ -155,4 +165,4 @@ No release-critical local task. Only deferred signing/notarization/sovereignty h
 
 ## Completion discipline
 
-Do not relabel physical App Control, cross-version upgrade, Astra, exact signed-set or human/legal gates as complete from CI, mocks or documentation. Keep historical artifacts/evidence immutable, and rebind clean-IP evidence whenever product/package implementation changes after a selected candidate. Repository owner-migration governance is closed from real mirror evidence, `main.protected=true`, and a rule-enforced negative merge test rather than from assumed settings state.
+Do not relabel physical App Control, cross-version upgrade, Astra, exact signed-set or human/legal gates as complete from CI, mocks or documentation. Keep historical artifacts/evidence immutable, and rebind clean-IP evidence whenever product source, build dependencies or package/compliance implementation materially changes after a selected candidate. Repository owner-migration governance is closed from real mirror evidence, `main.protected=true`, and a rule-enforced negative merge test rather than from assumed settings state.
