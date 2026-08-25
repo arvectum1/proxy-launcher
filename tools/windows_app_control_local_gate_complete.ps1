@@ -9,7 +9,8 @@
          repair / corruption recovery / uninstall acceptance.
 
     The canonical predecessor is the immutable recovered 0.2.2 P0.4 LegacyClientZip.
-    Policy deployment is intentionally outside this wrapper.
+    Policy deployment is intentionally outside this wrapper. The abandoned Windows VM
+    path is out of scope; this wrapper is for the dedicated physical acceptance host.
 #>
 [CmdletBinding()]
 param(
@@ -37,7 +38,8 @@ if (-not $IsolatedAcceptanceEnvironment) {
 
 $upgradeScript = Join-Path $PSScriptRoot 'windows_app_control_upgrade_acceptance.ps1'
 $currentScript = Join-Path $PSScriptRoot 'windows_app_control_local_gate.ps1'
-foreach ($required in @($upgradeScript, $currentScript)) {
+$currentAliasScript = Join-Path $PSScriptRoot 'windows_app_control_current_release_alias.ps1'
+foreach ($required in @($upgradeScript, $currentScript, $currentAliasScript)) {
     if (-not (Test-Path -LiteralPath $required -PathType Leaf)) { throw "Required acceptance script is missing: $required" }
 }
 
@@ -94,6 +96,13 @@ try {
         if ($remaining.Count -eq 0) { Remove-Item -LiteralPath $installRoot -Force }
     }
 
+    # The sealed Russian release has a canonical long filename while the older
+    # current-release subgate resolves a historical local filename. Create only
+    # an exact-byte verified alias; this is local acceptance scaffolding, not a
+    # rebuilt or modified promoted artifact.
+    & $currentAliasScript -ReleaseDirectory $ReleaseDirectory
+    if ($LASTEXITCODE -ne 0) { throw 'Current sealed Setup filename alias preparation failed.' }
+
     & $currentScript `
         -Phase Enforced `
         -BasePolicyId $BasePolicyId `
@@ -120,6 +129,7 @@ finally {
 
 if ($final.result -ne 'PASS') { throw 'APL-WIN-014 real App Control for Business local gate: BLOCK' }
 Write-Host 'APL-WIN-014 real App Control for Business local gate: PASS'
+Write-Host 'Cross-version upgrade: PASS'
 Write-Host 'Historical 0.2.2 P0.4 -> exact 0.2.3 cross-version upgrade: PASS'
 Write-Host 'Setup / first launch / GUI / core / PAC / rollback / repair / corruption recovery / uninstall: PASS'
 Write-Host 'Windows App Control remained enforced: PASS'
