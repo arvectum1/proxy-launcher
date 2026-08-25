@@ -80,9 +80,7 @@ try {
     if (-not (Test-Path -LiteralPath $materialized -PathType Leaf)) { throw 'Historical customer ZIP was not materialized from git archive.' }
 
     Push-Location $RepositoryRoot
-    try {
-        $materializedBlob = Invoke-GitText @('hash-object',$materialized)
-    }
+    try { $materializedBlob = Invoke-GitText @('hash-object',$materialized) }
     finally { Pop-Location }
     if ($materializedBlob.ToLowerInvariant() -ne $ExpectedBlobSha1) { throw 'Materialized ZIP bytes do not reproduce the governed Git blob.' }
 
@@ -98,6 +96,7 @@ try {
     $appCandidates = @(Get-ChildItem -LiteralPath $packageDir -Recurse -File -Filter 'Arvectum Proxy Launcher.exe')
     if ($appCandidates.Count -ne 1) { throw "Recovered package must contain exactly one launcher EXE; found $($appCandidates.Count)." }
     $appExe = $appCandidates[0].FullName
+    $packageRoot = $appCandidates[0].Directory.FullName
     $appSha256 = Get-Sha256 $appExe
     if ($appSha256 -ne $ExpectedApplicationSha256) { throw "Historical application SHA256 mismatch. Expected=$ExpectedApplicationSha256 actual=$appSha256" }
 
@@ -106,7 +105,7 @@ try {
     if ([string]$version.FileVersion -ne $ExpectedFileVersion) { throw "Historical FileVersion mismatch: $($version.FileVersion)" }
 
     foreach ($required in @('install.bat','install.ps1','uninstall.ps1')) {
-        if (-not (Test-Path -LiteralPath (Join-Path $packageDir $required) -PathType Leaf)) { throw "Recovered P0.4 package is missing required installer file: $required" }
+        if (-not (Test-Path -LiteralPath (Join-Path $packageRoot $required) -PathType Leaf)) { throw "Recovered P0.4 package is missing required installer file beside the application EXE: $required" }
     }
 
     $files = @(Get-ChildItem -LiteralPath $packageDir -Recurse -File | Sort-Object FullName | ForEach-Object {
@@ -137,6 +136,7 @@ try {
             package_zip = $packageZip
             package_sha256 = $packageSha256
             package_directory = $packageDir
+            package_root = $packageRoot
             application_exe_sha256 = $appSha256
             application_relative_path = $appExe.Substring($packageDir.Length).TrimStart('\')
         }
@@ -153,6 +153,7 @@ try {
     Write-Host "Git blob: $ExpectedBlobSha1"
     Write-Host "Recovered ZIP SHA256: $packageSha256"
     Write-Host "Application SHA256: $appSha256"
+    Write-Host "Package root: $packageRoot"
     Write-Host "Manifest: $manifestPath"
 }
 finally {
