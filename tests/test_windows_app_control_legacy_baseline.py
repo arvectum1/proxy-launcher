@@ -6,6 +6,7 @@ ROOT = Path(__file__).resolve().parents[1]
 RECOVER = ROOT / "tools" / "windows_app_control_recover_0_2_2_baseline.ps1"
 TRUST = ROOT / "tools" / "windows_app_control_legacy_baseline_trust_pack.ps1"
 UPGRADE = ROOT / "tools" / "windows_app_control_upgrade_acceptance.ps1"
+CANONICAL = ROOT / "tools" / "windows_app_control_enforced_acceptance.ps1"
 FINAL = ROOT / "tools" / "windows_app_control_local_gate_complete.ps1"
 ALIAS = ROOT / "tools" / "windows_app_control_current_release_alias.ps1"
 DOC = ROOT / "docs" / "evidence" / "APL_WIN_014_0_2_2_BASELINE_RECONCILIATION_2026-08-25.md"
@@ -81,18 +82,37 @@ class WindowsAppControlLegacyBaselineContractTests(unittest.TestCase):
         ):
             self.assertIn(expected, text)
 
-    def test_final_gate_wires_legacy_recovery_and_trust_evidence(self):
+    def test_canonical_enforced_gate_consumes_legacy_recovery_and_trust_evidence(self):
+        text = CANONICAL.read_text(encoding="utf-8")
+        for expected in (
+            "BaselineManifestPath",
+            "BaselineTrustPackDirectory",
+            COMMIT,
+            BLOB,
+            APP_SHA,
+            "LegacyClientZip",
+            "Historical 0.2.2 P0.4",
+            "real_cross_version_upgrade",
+        ):
+            self.assertIn(expected, text)
+
+    def test_final_gate_wires_canonical_enforced_acceptance_only(self):
         text = FINAL.read_text(encoding="utf-8")
         for expected in (
             "LegacyClientZip",
             "BaselineManifestPath",
             "BaselineTrustPackDirectory",
             "Historical 0.2.2 P0.4 -> exact 0.2.3",
+            "windows_app_control_enforced_acceptance.ps1",
+            "windows_app_control_preverified_release.ps1",
+        ):
+            self.assertIn(expected, text)
+        for retired in (
             "windows_app_control_upgrade_acceptance.ps1",
             "windows_app_control_local_gate.ps1",
             "windows_app_control_current_release_alias.ps1",
         ):
-            self.assertIn(expected, text)
+            self.assertNotIn(retired, text)
 
     def test_canonical_web_evidence_records_exact_baseline_and_local_boundary(self):
         text = DOC.read_text(encoding="utf-8")
