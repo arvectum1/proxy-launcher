@@ -20,11 +20,24 @@ CURRENT_SETUP_SHA = "5808bde9d0ac45048d50bc256878519257f53bf0a9fa523a81ccb2eff0e
 class WindowsAppControlLegacyBaselineContractTests(unittest.TestCase):
     def test_recovery_is_bound_to_immutable_historical_package_and_never_rebuilds(self):
         text = RECOVER.read_text(encoding="utf-8")
-        for expected in (COMMIT, BLOB, QA_BLOB, APP_SHA, "15963815", "git archive", "hash-object", "cat-file"):
+        for expected in (COMMIT, BLOB, QA_BLOB, APP_SHA, "15963815", "git archive", "cat-file"):
             self.assertIn(expected, text)
         self.assertIn("This script NEVER rebuilds 0.2.2", text)
         self.assertIn("package_root", text)
         self.assertIn("application_relative_path", text)
+
+    def test_recovery_supports_clean_acceptance_stand_without_git(self):
+        text = RECOVER.read_text(encoding="utf-8")
+        for expected in (
+            "HistoricalPackageZipPath",
+            "HistoricalQaEvidencePath",
+            "Get-GitBlobSha1",
+            '"blob $($item.Length)`0"',
+            "DownloadedImmutableGitBlob",
+            "git.exe and a working copy are",
+        ):
+            self.assertIn(expected, text)
+        self.assertIn("requires BOTH -HistoricalPackageZipPath and -HistoricalQaEvidencePath", text)
 
     def test_baseline_trust_pack_is_exact_hash_and_includes_historical_scripts(self):
         text = TRUST.read_text(encoding="utf-8")
