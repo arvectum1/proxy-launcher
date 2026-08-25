@@ -83,7 +83,9 @@ class WindowsAppControlFinalLocalGateContractTests(unittest.TestCase):
         lowered = text.lower()
         self.assertIn("IsolatedAcceptanceEnvironment", text)
         self.assertIn("dedicated/isolated Windows 11 acceptance host", text)
-        self.assertIn("abandoned Windows VM path is out of scope", text)
+        self.assertIn("abandoned Windows VM", text)
+        self.assertIn("path is out of scope", text)
+        self.assertIn("dedicated physical acceptance host", text)
         self.assertIn("LegacyClientZip", text)
         for forbidden in ("--update-policy", "--remove-policy"):
             self.assertNotIn(forbidden, lowered)
