@@ -8,17 +8,20 @@
       2. exact 0.2.3 Setup / first launch / GUI / core / PAC / rollback /
          repair / corruption recovery / uninstall acceptance.
 
-    For the current project workflow the abandoned Windows VM path is out of scope.
+    The canonical predecessor is the immutable recovered 0.2.2 P0.4 LegacyClientZip.
     Policy deployment is intentionally outside this wrapper.
 #>
 [CmdletBinding()]
 param(
     [Parameter(Mandatory = $true)] [Guid]$BasePolicyId,
     [Parameter(Mandatory = $true)] [Guid]$BaselineSupplementalPolicyId,
-    [Parameter(Mandatory = $true)] [string]$BaselineSetupPath,
-    [Parameter(Mandatory = $true)] [string]$BaselineSetupSha256,
-    [Parameter(Mandatory = $true)] [string]$BaselineApplicationSha256,
-    [Parameter(Mandatory = $true)] [string]$BaselineVersion,
+    [ValidateSet('LegacyClientZip','InnoSetup')] [string]$BaselineKind = 'LegacyClientZip',
+    [string]$BaselineManifestPath = '',
+    [string]$BaselineTrustPackDirectory = '',
+    [string]$BaselineSetupPath = '',
+    [string]$BaselineSetupSha256 = '',
+    [string]$BaselineApplicationSha256 = '',
+    [string]$BaselineVersion = '0.2.2',
     [string]$ReleaseDirectory = 'C:\Arvectum\Releases\0.2.3-russian-production',
     [string]$TrustPackDirectory = 'C:\Arvectum\Evidence\APL-WIN-014\trust-pack',
     [string]$EvidenceDirectory = 'C:\Arvectum\Evidence\APL-WIN-014',
@@ -38,12 +41,18 @@ foreach ($required in @($upgradeScript, $currentScript)) {
     if (-not (Test-Path -LiteralPath $required -PathType Leaf)) { throw "Required acceptance script is missing: $required" }
 }
 
+if ($BaselineKind -eq 'LegacyClientZip') {
+    if (-not $BaselineManifestPath) { throw 'LegacyClientZip final gate requires -BaselineManifestPath.' }
+    if (-not $BaselineTrustPackDirectory) { throw 'LegacyClientZip final gate requires -BaselineTrustPackDirectory.' }
+}
+
 New-Item -ItemType Directory -Path $EvidenceDirectory -Force | Out-Null
 $final = [ordered]@{
-    schema = 'arvectum.proxy.apl-win-014-final-local-gate.v1'
+    schema = 'arvectum.proxy.apl-win-014-final-local-gate.v2'
     task = 'APL-WIN-014'
     host = $env:COMPUTERNAME
     base_policy_id = $BasePolicyId.ToString('B')
+    baseline_kind = $BaselineKind
     baseline_version = $BaselineVersion
     current_version = '0.2.3'
     started_utc = [DateTime]::UtcNow.ToString('o')
@@ -56,6 +65,9 @@ try {
     & $upgradeScript `
         -BasePolicyId $BasePolicyId `
         -BaselineSupplementalPolicyId $BaselineSupplementalPolicyId `
+        -BaselineKind $BaselineKind `
+        -BaselineManifestPath $BaselineManifestPath `
+        -BaselineTrustPackDirectory $BaselineTrustPackDirectory `
         -BaselineSetupPath $BaselineSetupPath `
         -BaselineSetupSha256 $BaselineSetupSha256 `
         -BaselineApplicationSha256 $BaselineApplicationSha256 `
@@ -69,6 +81,7 @@ try {
     if (-not (Test-Path -LiteralPath $upgradeEvidencePath -PathType Leaf)) { throw 'Upgrade sub-gate evidence is missing.' }
     $upgrade = Get-Content -LiteralPath $upgradeEvidencePath -Raw -Encoding UTF8 | ConvertFrom-Json
     if ([string]$upgrade.result -ne 'PASS') { throw 'Real cross-version upgrade sub-gate did not PASS.' }
+    if ([string]$upgrade.baseline_kind -ne $BaselineKind -or [string]$upgrade.baseline_version -ne $BaselineVersion) { throw 'Upgrade evidence does not describe the requested baseline.' }
     $final.upgrade_gate = 'PASS'
     $final.upgrade_evidence = $upgradeEvidencePath
 
@@ -107,6 +120,6 @@ finally {
 
 if ($final.result -ne 'PASS') { throw 'APL-WIN-014 real App Control for Business local gate: BLOCK' }
 Write-Host 'APL-WIN-014 real App Control for Business local gate: PASS'
-Write-Host 'Cross-version upgrade: PASS'
+Write-Host 'Historical 0.2.2 P0.4 -> exact 0.2.3 cross-version upgrade: PASS'
 Write-Host 'Setup / first launch / GUI / core / PAC / rollback / repair / corruption recovery / uninstall: PASS'
 Write-Host 'Windows App Control remained enforced: PASS'
