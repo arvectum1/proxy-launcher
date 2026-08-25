@@ -48,6 +48,7 @@ jobs:
             'tools/windows_rc_acceptance.ps1',
             'tools/windows_app_control_recover_0_2_2_baseline.ps1',
             'tools/windows_app_control_legacy_baseline_trust_pack.ps1',
+            'tools/windows_app_control_current_release_alias.ps1',
             'tools/windows_app_control_enterprise_trust_pack.ps1',
             'tools/windows_app_control_local_gate.ps1',
             'tools/windows_app_control_upgrade_acceptance.ps1',
