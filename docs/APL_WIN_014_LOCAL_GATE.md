@@ -1,37 +1,72 @@
 # APL-WIN-014 — real App Control for Business local gate
 
-Status: **HARNESS READY / REAL WINDOWS 11 HOST EVIDENCE REQUIRED**
+Status: **WEB BASELINE RECOVERED / HARNESS READY / REAL WINDOWS 11 HOST EVIDENCE REQUIRED**
 
-For the current Arvectum Proxy Launcher workflow this gate is executed on a **dedicated/isolated physical Windows 11 acceptance host** with **App Control for Business actually enforced**. The previously attempted Windows VM path is explicitly out of scope because that environment was not reliable enough for acceptance. CI, mocks, Smart App Control screenshots, or a successful run after disabling protection are not acceptance evidence.
+Canonical host: dedicated physical **ARVECTUM-DEMO**, Windows 11 Enterprise. The abandoned VM path is out of scope. CI, mocks, screenshots, same-version repair, or a run performed after weakening Windows protection are not acceptance evidence.
 
-## Safety boundary
+Canonical Web evidence: `docs/evidence/APL_WIN_014_0_2_2_BASELINE_RECONCILIATION_2026-08-25.md`.
 
-- Use the dedicated Windows 11 acceptance host, not the abandoned VM path.
-- Never run destructive acceptance against a normal owner workstation with valuable state.
-- Never disable Smart App Control, App Control for Business, Defender, or another Windows protection to make Arvectum run.
-- Never change `VerifiedAndReputablePolicyState`.
-- The Arvectum release/installer does not deploy App Control policies.
-- App Control policy deployment remains an explicit lab/customer-IT action.
-- `ReferenceFullHash` is required for the current 0.2.3 exact-hash acceptance because Setup alone does not cover generated maintenance/uninstall binaries.
-- Final PASS requires a **real cross-version upgrade from a distinct sealed previous build**. Same-version repair is not upgrade evidence.
+## Safety invariants
 
-## Canonical scripts
+- Never disable Smart App Control, App Control for Business, Defender, or another Windows protection to make the test pass.
+- Arvectum acceptance scripts do not deploy/remove App Control policies; deployment remains an explicit lab/customer-IT action.
+- Current `0.2.3` uses `ReferenceFullHash` trust.
+- Historical `0.2.2 P0.4` uses exact-hash trust for the real retained customer-package lifecycle, including its PowerShell installer scripts.
+- Final PASS requires both a real `0.2.2 P0.4 -> 0.2.3` upgrade and the standalone exact-current `0.2.3` enforced gate.
+- If a genuine P0.4 byte is denied by App Control, preserve the denial and BLOCK. Do not use execution-policy or App Control bypasses.
 
-1. `tools/windows_app_control_local_gate.ps1`
-   - `Prepare`: exact release verification + reference installation + `ReferenceFullHash` trust pack; policy deployment is not performed.
-   - `Enforced`: current 0.2.3 Setup, first GUI launch, core, PAC, Windows system proxy, rollback, canonical repair/corruption/uninstall lifecycle, Code Integrity evidence.
-2. `tools/windows_app_control_upgrade_acceptance.ps1`
-   - installs a distinct sealed baseline under its own active supplemental trust;
-   - upgrades in place to exact 0.2.3;
-   - proves exact post-upgrade bytes and state preservation;
-   - uninstalls and checks Code Integrity enforcement evidence.
-3. `tools/windows_app_control_local_gate_complete.ps1`
-   - the **only final completion entry point**;
-   - emits final PASS only if both the real upgrade gate and the exact 0.2.3 enforced gate PASS.
+## Exact historical baseline
 
-## Phase A — prepare current 0.2.3 trust pack
+- commit: `0ea08d9c815da36d0175f62db153de78f89731fc`;
+- path: `release/Arvectum-Proxy-Launcher-Windows-0.2.2-P0.4-client.zip`;
+- Git blob SHA-1: `574d3dc5f90a116555e3a72ff3288c31c19d3dc7`;
+- Git blob size: `15963815`;
+- P0.4 QA blob: `163e61cd2e1d8ff798289faf075775af8f9bbd41`;
+- application SHA-256: `7EF02652E31BBBD68833BE599135CF59519C42B1F8A8FEBB580B3891FFC35EC0`;
+- version: `0.2.2` / `0.2.2.0`;
+- historical QA: `RESULT: PASS`, `CUSTOMER UPDATE INSTALLER: APPROVED`, `77/77 PASS`.
 
-Run from elevated PowerShell on the dedicated isolated Windows 11 acceptance host while the organization/lab base policy is present in an appropriate staging/audit state:
+Do not rebuild or substitute this baseline.
+
+## Prerequisites
+
+Use elevated PowerShell from the current canonical repository. Stage the exact current Russian release at:
+
+`C:\Arvectum\Releases\0.2.3-russian-production`
+
+Before a retry, archive rather than overwrite previous evidence. The recovery/trust scripts deliberately refuse to overwrite evidence directories.
+
+The product acceptance state must be clean before the final gate: no installed Arvectum tree, no Arvectum process, no current/legacy uninstall registration, and no active product state directory. Do not delete foreign/non-Arvectum state to manufacture cleanliness.
+
+## A — recover exact 0.2.2 P0.4 from Git history
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tools\windows_app_control_recover_0_2_2_baseline.ps1 `
+  -RepositoryRoot (Get-Location).Path `
+  -OutputDirectory 'C:\Arvectum\Releases\0.2.2-P0.4-baseline' `
+  -EvidenceDirectory 'C:\Arvectum\Evidence\APL-WIN-014\baseline-recovery'
+```
+
+Require `APL-WIN-014 historical 0.2.2 P0.4 recovery: PASS` and:
+
+`C:\Arvectum\Evidence\APL-WIN-014\baseline-recovery\apl-win-014-0.2.2-baseline-recovery.json`
+
+If the historical object is unavailable locally, fetch canonical Git history. Do not download/rebuild a substitute.
+
+## B — normalize the current Setup filename for the older local-gate resolver
+
+The promoted Russian release remains unchanged. This step creates only an exact-byte local acceptance alias because the old current-release gate expects a shorter filename.
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tools\windows_app_control_current_release_alias.ps1 `
+  -ReleaseDirectory 'C:\Arvectum\Releases\0.2.3-russian-production'
+```
+
+Require `APL-WIN-014 current Setup filename compatibility alias: PASS` (or the already-present exact-byte PASS). The alias SHA-256 must be `5808bde9d0ac45048d50bc256878519257f53bf0a9fa523a81ccb2eff0e21414`.
+
+## C — prepare current 0.2.3 ReferenceFullHash trust
+
+While the lab base policy is in the appropriate staging/audit state for reference installation:
 
 ```powershell
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tools\windows_app_control_local_gate.ps1 `
@@ -43,46 +78,47 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tools\windows_app_cont
   -IsolatedAcceptanceEnvironment
 ```
 
-`-IsolatedAcceptanceEnvironment` is a safety acknowledgement retained for compatibility; in the current project workflow it means the dedicated acceptance **host**, not a VM.
+Require `PREPARED`, not final PASS. Current `trust-pack.json` must use `ReferenceFullHash` and target the supplied base policy.
 
-Expected result: `PREPARED`, not `PASS`. The generated trust pack must be `ReferenceFullHash` and target the supplied base-policy ID.
+## D — generate exact 0.2.2 P0.4 baseline trust
 
-## Phase B — policy deployment outside Arvectum tooling
-
-Using the isolated host/customer App Control management path:
-
-1. confirm the base policy permits supplemental policies;
-2. if the base policy is signed, authorize the supplemental signer as required by that policy model;
-3. deploy the generated current-release supplemental `.cip`;
-4. deploy/activate a separate exact trust path for the sealed baseline build used by the upgrade test;
-5. put the base policy into the intended **Enforced** state;
-6. reboot if required by the policy-management path;
-7. verify both supplemental policies are visible with `CiTool -lp -json`.
-
-Arvectum scripts intentionally do not perform these policy mutations.
-
-## Baseline required for the real upgrade proof
-
-The operator/OpenCode must provide a distinct previous sealed Windows installer and its governed evidence:
-
-- baseline version, e.g. `0.2.2` if that exact package is available;
-- exact baseline Setup SHA-256;
-- exact installed baseline `Arvectum Proxy Launcher.exe` SHA-256;
-- active supplemental policy ID that trusts those baseline bytes and is bound to the same base policy.
-
-If a trustworthy previous package cannot be recovered, **do not manufacture one and do not substitute 0.2.3 repair**. The upgrade portion remains BLOCK until a distinct governed baseline exists (or until a separately governed Managed Installer upgrade acceptance is implemented).
-
-## Phase C — canonical final acceptance
-
-After both baseline and current supplemental trust are active and the base policy is enforced:
+Use the same base policy ID:
 
 ```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tools\windows_app_control_legacy_baseline_trust_pack.ps1 `
+  -BaselineManifestPath 'C:\Arvectum\Evidence\APL-WIN-014\baseline-recovery\apl-win-014-0.2.2-baseline-recovery.json' `
+  -BasePolicyId '{BASE-POLICY-GUID}' `
+  -OutputDirectory 'C:\Arvectum\Evidence\APL-WIN-014\baseline-trust-pack'
+```
+
+Require `APL-WIN-014 0.2.2 P0.4 baseline trust pack: PASS` and `Deployment: NOT PERFORMED`. Retain `supplemental_policy_id` from baseline `trust-pack.json`.
+
+## E — deploy policy through the lab/customer management path
+
+Outside Arvectum acceptance tooling:
+
+1. confirm the base policy permits supplemental policies;
+2. deploy the current `.cip` from `...\trust-pack`;
+3. deploy the P0.4 `.cip` from `...\baseline-trust-pack`;
+4. place/keep the base policy in **Enforced** mode;
+5. reboot if required;
+6. verify with `CiTool.exe -lp -json` that the requested base is on-disk and enforced and both supplemental policies are on-disk and attached to the intended base.
+
+Do not continue on ambiguous policy identity/state.
+
+## F — canonical final acceptance
+
+```powershell
+$baselineTrust = Get-Content `
+  'C:\Arvectum\Evidence\APL-WIN-014\baseline-trust-pack\trust-pack.json' `
+  -Raw | ConvertFrom-Json
+
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tools\windows_app_control_local_gate_complete.ps1 `
   -BasePolicyId '{BASE-POLICY-GUID}' `
-  -BaselineSupplementalPolicyId '{BASELINE-SUPPLEMENTAL-GUID}' `
-  -BaselineSetupPath 'C:\Arvectum\Releases\baseline\ArvectumProxyLauncher-Setup.exe' `
-  -BaselineSetupSha256 '<64-hex-sha256>' `
-  -BaselineApplicationSha256 '<64-hex-sha256>' `
+  -BaselineSupplementalPolicyId $baselineTrust.supplemental_policy_id `
+  -BaselineKind LegacyClientZip `
+  -BaselineManifestPath 'C:\Arvectum\Evidence\APL-WIN-014\baseline-recovery\apl-win-014-0.2.2-baseline-recovery.json' `
+  -BaselineTrustPackDirectory 'C:\Arvectum\Evidence\APL-WIN-014\baseline-trust-pack' `
   -BaselineVersion '0.2.2' `
   -ReleaseDirectory 'C:\Arvectum\Releases\0.2.3-russian-production' `
   -TrustPackDirectory 'C:\Arvectum\Evidence\APL-WIN-014\trust-pack' `
@@ -90,27 +126,26 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tools\windows_app_cont
   -IsolatedAcceptanceEnvironment
 ```
 
-## Required final evidence
+Do not pass a manufactured `BaselineSetupPath` for P0.4. Those compatibility parameters remain only for a separately governed future Inno predecessor.
 
-`C:\Arvectum\Evidence\APL-WIN-014\apl-win-014-final-result.json` must contain `result = PASS` and reference two subordinate PASS records:
+## PASS requirements
 
-- `apl-win-014-upgrade-result.json`;
-- `apl-win-014-enforced-result.json`.
+`C:\Arvectum\Evidence\APL-WIN-014\apl-win-014-final-result.json` must be `PASS` and reference PASS subordinate records for upgrade and exact-current enforcement. Evidence must prove:
 
-The subordinate evidence must prove, at minimum:
+- immutable P0.4 commit/blob plus locally materialized ZIP SHA-256;
+- exact historical application SHA/version;
+- intended base and both supplemental policy IDs;
+- base policy enforced before and after;
+- P0.4 install and exact historical GUI execution under enforcement;
+- real `0.2.2 P0.4 -> 0.2.3` transition;
+- state marker preservation;
+- exact post-upgrade `0.2.3` application and cached repair bytes;
+- exact-current Setup/GUI/core/PAC/system-proxy/rollback path;
+- repair/corruption recovery/uninstall lifecycle;
+- zero tested Arvectum Code Integrity `3077` blocks.
 
-- requested base policy remained enforced;
-- current and baseline supplemental trust were active/on-disk where required;
-- exact 0.2.3 Setup executed under enforcement;
-- first GUI process creation succeeded;
-- proxy core ran;
-- PAC served `FindProxyForURL` from `127.0.0.1:8082`;
-- Windows `AutoConfigURL` used the governed local PAC endpoint;
-- explicit rollback restored the network state;
-- repair/corruption recovery/uninstall lifecycle passed;
-- real distinct-version upgrade passed and preserved per-user state;
-- exact post-upgrade 0.2.3 application and cached repair hashes matched the sealed release;
-- no Arvectum Code Integrity event 3077 was recorded during the tested operations;
-- App Control remained enforced after acceptance.
+## Export
 
-Only then may the roadmap local gate be changed from `PENDING` to `PASS`.
+Before Linux repartitioning, copy `C:\Arvectum\Evidence\APL-WIN-014` to stable external/company evidence storage and create a recursive SHA-256 inventory. Preserve JSON, logs, trust packs and checksum inventory together.
+
+Only a verified exported evidence set may close APL-WIN-014.

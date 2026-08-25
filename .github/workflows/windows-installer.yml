@@ -46,6 +46,13 @@ jobs:
             'tools/prepare_windows_inno_setup_base.ps1',
             'tools/install_verified_windows_inno_setup.ps1',
             'tools/windows_rc_acceptance.ps1',
+            'tools/windows_app_control_recover_0_2_2_baseline.ps1',
+            'tools/windows_app_control_legacy_baseline_trust_pack.ps1',
+            'tools/windows_app_control_current_release_alias.ps1',
+            'tools/windows_app_control_enterprise_trust_pack.ps1',
+            'tools/windows_app_control_local_gate.ps1',
+            'tools/windows_app_control_upgrade_acceptance.ps1',
+            'tools/windows_app_control_local_gate_complete.ps1',
             'qa/windows_installer_171_e2e.ps1',
             'qa/windows_rc_e2e.ps1',
             'installer/upgrade_helper.ps1',
@@ -54,6 +61,14 @@ jobs:
             [void][scriptblock]::Create((Get-Content -LiteralPath $script -Raw))
             Write-Host "PowerShell syntax PASS: $script"
           }
+
+      - name: Validate APL-WIN-014 exact baseline contracts
+        shell: pwsh
+        run: |
+          python -m unittest `
+            tests.test_windows_app_control_legacy_baseline `
+            tests.test_windows_app_control_final_local_gate `
+            -v
 
       - name: Validate Inno Setup sovereignty contract
         shell: pwsh

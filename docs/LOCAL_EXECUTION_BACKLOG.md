@@ -21,24 +21,36 @@ Current stand:
 
 Target permanent state: Windows 11 + Astra Linux SE 1.8 x86-64 dual boot.
 
-### P0.1 — APL-WIN-014 App Control for Business — CURRENT
+### P0.1 — APL-WIN-014 App Control for Business — CURRENT / LOCAL
 
-Status: **REAL HOST AVAILABLE / FINAL EVIDENCE PENDING**.
+Status: **WEB BASELINE RECOVERY DONE / REAL HOST FINAL EVIDENCE PENDING**.
 
 Use `docs/APL_WIN_014_LOCAL_GATE.md`.
 
+The previous-build prerequisite is no longer ambiguous. Web reconciliation selected the actual retained `0.2.2 P0.4` customer package:
+
+- commit `0ea08d9c815da36d0175f62db153de78f89731fc`;
+- Git path `release/Arvectum-Proxy-Launcher-Windows-0.2.2-P0.4-client.zip`;
+- Git blob SHA-1 `574d3dc5f90a116555e3a72ff3288c31c19d3dc7`;
+- blob size `15963815`;
+- exact application SHA-256 `7EF02652E31BBBD68833BE599135CF59519C42B1F8A8FEBB580B3891FFC35EC0`;
+- historical QA `RESULT: PASS`, `CUSTOMER UPDATE INSTALLER: APPROVED`, `77/77 PASS`.
+
+Canonical evidence: `docs/evidence/APL_WIN_014_0_2_2_BASELINE_RECONCILIATION_2026-08-25.md`.
+
 Required local boundary:
 
-1. recover/verify a distinct sealed previous Windows installer (prefer the actual retained 0.2.2 release if available) and its governed Setup/application hashes;
-2. generate the current 0.2.3 `ReferenceFullHash` trust pack;
-3. deploy current and baseline supplemental trust through the lab/customer App Control management path;
-4. keep the base policy actually enforced;
-5. run `tools/windows_app_control_local_gate_complete.ps1`;
-6. require both subordinate enforced and real cross-version upgrade PASS records;
-7. require no tested Arvectum Code Integrity 3077 denial and preserve the enforced policy after the test;
-8. export/hash-verify evidence outside the laptop.
+1. materialize the exact P0.4 package from local canonical Git history with `tools/windows_app_control_recover_0_2_2_baseline.ps1`; do not rebuild/download-substitute it;
+2. generate current `0.2.3` `ReferenceFullHash` trust pack with the existing Prepare phase;
+3. generate exact historical P0.4 hash trust with `tools/windows_app_control_legacy_baseline_trust_pack.ps1` against the same base policy;
+4. deploy current and baseline supplemental policies through the lab/customer App Control management path;
+5. keep the base policy actually enforced;
+6. run `tools/windows_app_control_local_gate_complete.ps1` with `BaselineKind LegacyClientZip` and the exact recovery/trust manifests;
+7. require both subordinate exact-current enforced and real `0.2.2 P0.4 -> 0.2.3` cross-version upgrade PASS records;
+8. require no tested Arvectum Code Integrity `3077` denial and preserve the enforced policy after the test;
+9. export/hash-verify evidence outside the laptop.
 
-Do not replace the cross-version requirement with same-version repair and do not manufacture a historical baseline.
+Do not replace the cross-version requirement with same-version repair. If the genuine historical installer/script bytes are denied under App Control, preserve the denial and BLOCK; do not weaken policy or use an execution-policy workaround.
 
 ### P0.2 — APL-REL-014 exact signed-set lifecycle — PARTIAL / READY
 
@@ -140,14 +152,14 @@ Architecture/product research is Web-executable now. Native production implement
 
 ### [Web]
 
-1. recover/reconcile a trustworthy sealed previous Windows package/evidence for APL-WIN-014 cross-version proof;
+1. **DONE — APL-WIN-014 exact 0.2.2 P0.4 baseline recovery/reconciliation and local-harness preparation.**
 2. optional APL-ROUTE-003 architecture decision work.
 
-Post-#172 APL-IP-001 reconciliation and repository/GitVerse owner-migration governance are complete and removed from the active Web backlog.
+Post-#172 APL-IP-001 reconciliation, APL-WIN-014 predecessor recovery, and repository/GitVerse owner-migration governance are complete and removed from the active Web backlog.
 
 ### [Win] ARVECTUM-DEMO
 
-1. APL-WIN-014 App Control final gate when the baseline artifact/trust prerequisite is ready;
+1. **CURRENT — materialize the exact P0.4 baseline, generate/deploy both trust packs and execute APL-WIN-014 final App Control gate.**
 2. close any remaining APL-REL-014 exact signed-set lifecycle evidence;
 3. export/hash-verify Windows evidence.
 
