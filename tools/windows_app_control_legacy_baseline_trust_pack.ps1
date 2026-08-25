@@ -4,7 +4,8 @@
 .DESCRIPTION
     Consumes only a PASS manifest emitted by windows_app_control_recover_0_2_2_baseline.ps1,
     re-verifies the immutable historical identity and every recovered file hash, then creates
-    a hash-only supplemental App Control policy for the exact legacy package tree.
+    a hash-only supplemental App Control policy for the exact legacy package tree, including
+    the historical PowerShell installer scripts required to execute that real baseline.
 
     This script does NOT deploy, remove, disable, weaken or otherwise mutate App Control policy.
 #>
@@ -34,12 +35,6 @@ function Assert-Command([string]$Name) {
     if (-not (Get-Command $Name -ErrorAction SilentlyContinue)) { throw "Required Windows command/cmdlet is unavailable: $Name" }
 }
 
-function Normalize-GuidText([object]$Value) {
-    if ($null -eq $Value) { return '' }
-    $text = ([string]$Value).Trim().Trim('{}')
-    try { return ([Guid]$text).ToString('D').ToLowerInvariant() } catch { return $text.ToLowerInvariant() }
-}
-
 function Get-PolicyIdFromXml([string]$Path) {
     $text = Get-Content -LiteralPath $Path -Raw -Encoding UTF8
     $match = [regex]::Match($text, '<PolicyID>\s*([^<]+)\s*</PolicyID>', 'IgnoreCase')
@@ -64,6 +59,7 @@ if (([string]$baseline.baseline.application_exe_sha256).ToLowerInvariant() -ne $
 
 $packageZip = (Resolve-Path -LiteralPath ([string]$baseline.baseline.package_zip)).Path
 $packageDirectory = (Resolve-Path -LiteralPath ([string]$baseline.baseline.package_directory)).Path
+$packageRoot = (Resolve-Path -LiteralPath ([string]$baseline.baseline.package_root)).Path
 if ((Get-Sha256 $packageZip) -ne ([string]$baseline.baseline.package_sha256).ToLowerInvariant()) { throw 'Recovered baseline package ZIP SHA256 no longer matches its manifest.' }
 
 $manifestFiles = @($baseline.files)
@@ -77,6 +73,9 @@ foreach ($record in $manifestFiles) {
 
 $appExe = Join-Path $packageDirectory ([string]$baseline.baseline.application_relative_path)
 if ((Get-Sha256 $appExe) -ne $ExpectedApplicationSha256) { throw 'Recovered baseline application EXE is not the exact governed P0.4 binary.' }
+foreach ($required in @('install.bat','install.ps1','uninstall.ps1')) {
+    if (-not (Test-Path -LiteralPath (Join-Path $packageRoot $required) -PathType Leaf)) { throw "Recovered baseline installer component is missing: $required" }
+}
 
 if (Test-Path -LiteralPath $OutputDirectory) { throw "Output directory already exists; refusing to overwrite a prior baseline trust pack: $OutputDirectory" }
 New-Item -ItemType Directory -Path $OutputDirectory -Force | Out-Null
@@ -85,7 +84,10 @@ $OutputDirectory = (Resolve-Path -LiteralPath $OutputDirectory).Path
 $policyXml = Join-Path $OutputDirectory 'Arvectum-Proxy-Launcher-0.2.2-P0.4-AppControl-Supplemental.xml'
 $policyName = 'Arvectum Proxy Launcher 0.2.2 P0.4 Exact Hash'
 Write-Host '=== Generating exact-hash baseline App Control policy ==='
-New-CIPolicy -MultiplePolicyFormat -ScanPath $packageDirectory -UserPEs -NoScript -NoShadowCopy -FilePath $policyXml -Level Hash | Out-Null
+# Do not use -NoScript here: the historical customer installer legitimately invokes
+# the retained install.ps1/uninstall.ps1 files and App Control must authorize those
+# exact script bytes rather than requiring a policy bypass.
+New-CIPolicy -MultiplePolicyFormat -ScanPath $packageRoot -UserPEs -NoShadowCopy -FilePath $policyXml -Level Hash | Out-Null
 Set-CIPolicyIdInfo -FilePath $policyXml -ResetPolicyID -PolicyName $policyName -SupplementsBasePolicyID $BasePolicyId | Out-Null
 Set-CIPolicyVersion -FilePath $policyXml -Version '0.2.2.4'
 
@@ -114,12 +116,13 @@ $trust = [ordered]@{
         application_exe_sha256 = $ExpectedApplicationSha256
         recovery_manifest_sha256 = Get-Sha256 $BaselineManifestPath
     }
-    policy_scope = 'exact executable/script/package bytes in the recovered historical 0.2.2 P0.4 customer package tree'
+    policy_scope = 'exact executable and PowerShell-script bytes required by the recovered historical 0.2.2 P0.4 customer package lifecycle'
     deployment_invariants = @(
         'pack generation never deploys App Control policy',
         'base policy must allow supplemental policies',
         'Smart App Control and App Control for Business must not be disabled as a workaround',
         'hash trust is exact-byte trust and covers only the recovered P0.4 package bytes',
+        'historical install.ps1/uninstall.ps1 are explicitly included in policy generation; no script-policy bypass is accepted',
         'baseline was recovered from immutable Git history and was not rebuilt'
     )
     result = 'PASS'
@@ -139,7 +142,9 @@ Supplemental policy ID: $policyId
 
 This pack DOES NOT deploy itself and DOES NOT weaken App Control.
 Deploy the generated .cip only through the approved lab/customer App Control management path.
-The policy is exact-hash trust for the immutable recovered historical package tree.
+The policy is exact-hash trust for the immutable recovered historical package lifecycle,
+including the retained PowerShell installer scripts. Do not use execution-policy or App
+Control bypasses if those scripts are denied; a denial is acceptance evidence and must BLOCK.
 Do not rebuild, rename-by-substitution, or replace the 0.2.2 baseline with a same-version 0.2.3 artifact.
 "@
 Set-Content -LiteralPath (Join-Path $OutputDirectory 'DEPLOYMENT.txt') -Value $deployment -Encoding UTF8
