@@ -1,30 +1,27 @@
 <#
 .SYNOPSIS
-    Canonical completion wrapper for the APL-WIN-014 real local gate.
+    Canonical completion wrapper for the APL-WIN-014 real enforced local gate.
 .DESCRIPTION
-    A final APL-WIN-014 PASS is emitted only when BOTH are proven on the same
-    dedicated/isolated Windows 11 acceptance host while App Control remains enforced:
-      1. real cross-version upgrade from a distinct sealed baseline build to 0.2.3;
-      2. exact 0.2.3 Setup / first launch / GUI / core / PAC / rollback /
-         repair / corruption recovery / uninstall acceptance.
+    Final PASS is emitted only after the canonical enforced acceptance proves BOTH:
+      1. immutable historical 0.2.2 P0.4 -> exact sealed 0.2.3 upgrade;
+      2. exact sealed 0.2.3 install/start/PAC/rollback/repair/uninstall lifecycle.
 
-    The canonical predecessor is the immutable recovered 0.2.2 P0.4 LegacyClientZip.
-    Policy deployment is intentionally outside this wrapper. The abandoned Windows VM
-    path is out of scope; this wrapper is for the dedicated physical acceptance host.
+    The wrapper is host-only acceptance tooling for a dedicated/isolated Windows 11
+    physical acceptance host. It never deploys/removes App Control policy and never
+    changes Smart App Control, Defender, or policy rule options.
+
+    The abandoned Windows VM path is out of scope. Policy deployment/cutover is owned
+    by the separate lab procedure. The old Setup filename alias path is retired.
 #>
 [CmdletBinding()]
 param(
     [Parameter(Mandatory = $true)] [Guid]$BasePolicyId,
     [Parameter(Mandatory = $true)] [Guid]$BaselineSupplementalPolicyId,
-    [ValidateSet('LegacyClientZip','InnoSetup')] [string]$BaselineKind = 'LegacyClientZip',
-    [string]$BaselineManifestPath = '',
-    [string]$BaselineTrustPackDirectory = '',
-    [string]$BaselineSetupPath = '',
-    [string]$BaselineSetupSha256 = '',
-    [string]$BaselineApplicationSha256 = '',
-    [string]$BaselineVersion = '0.2.2',
+    [Parameter(Mandatory = $true)] [string]$BaselineManifestPath,
+    [Parameter(Mandatory = $true)] [string]$BaselineTrustPackDirectory,
     [string]$ReleaseDirectory = 'C:\Arvectum\Releases\0.2.3-russian-production',
     [string]$TrustPackDirectory = 'C:\Arvectum\Evidence\APL-WIN-014\trust-pack',
+    [string]$SigningEvidencePath = '',
     [string]$EvidenceDirectory = 'C:\Arvectum\Evidence\APL-WIN-014',
     [switch]$IsolatedAcceptanceEnvironment
 )
@@ -36,26 +33,22 @@ if (-not $IsolatedAcceptanceEnvironment) {
     throw 'SAFETY BLOCK: final APL-WIN-014 acceptance is allowed only on the dedicated/isolated Windows 11 acceptance host.'
 }
 
-$upgradeScript = Join-Path $PSScriptRoot 'windows_app_control_upgrade_acceptance.ps1'
-$currentScript = Join-Path $PSScriptRoot 'windows_app_control_local_gate.ps1'
-$currentAliasScript = Join-Path $PSScriptRoot 'windows_app_control_current_release_alias.ps1'
-foreach ($required in @($upgradeScript, $currentScript, $currentAliasScript)) {
-    if (-not (Test-Path -LiteralPath $required -PathType Leaf)) { throw "Required acceptance script is missing: $required" }
-}
-
-if ($BaselineKind -eq 'LegacyClientZip') {
-    if (-not $BaselineManifestPath) { throw 'LegacyClientZip final gate requires -BaselineManifestPath.' }
-    if (-not $BaselineTrustPackDirectory) { throw 'LegacyClientZip final gate requires -BaselineTrustPackDirectory.' }
+$canonical = Join-Path $PSScriptRoot 'windows_app_control_enforced_acceptance.ps1'
+$helper = Join-Path $PSScriptRoot 'windows_app_control_preverified_release.ps1'
+foreach ($required in @($canonical,$helper)) {
+    if (-not (Test-Path -LiteralPath $required -PathType Leaf)) {
+        throw "Required canonical acceptance script is missing: $required"
+    }
 }
 
 New-Item -ItemType Directory -Path $EvidenceDirectory -Force | Out-Null
 $final = [ordered]@{
-    schema = 'arvectum.proxy.apl-win-014-final-local-gate.v2'
+    schema = 'arvectum.proxy.apl-win-014-final-local-gate.v3'
     task = 'APL-WIN-014'
     host = $env:COMPUTERNAME
     base_policy_id = $BasePolicyId.ToString('B')
-    baseline_kind = $BaselineKind
-    baseline_version = $BaselineVersion
+    baseline_kind = 'LegacyClientZip'
+    baseline_version = '0.2.2'
     current_version = '0.2.3'
     started_utc = [DateTime]::UtcNow.ToString('o')
     result = 'BLOCK'
@@ -63,62 +56,40 @@ $final = [ordered]@{
     current_release_gate = 'NOT_RUN'
 }
 
+$gateError = $null
 try {
-    & $upgradeScript `
-        -BasePolicyId $BasePolicyId `
-        -BaselineSupplementalPolicyId $BaselineSupplementalPolicyId `
-        -BaselineKind $BaselineKind `
-        -BaselineManifestPath $BaselineManifestPath `
-        -BaselineTrustPackDirectory $BaselineTrustPackDirectory `
-        -BaselineSetupPath $BaselineSetupPath `
-        -BaselineSetupSha256 $BaselineSetupSha256 `
-        -BaselineApplicationSha256 $BaselineApplicationSha256 `
-        -BaselineVersion $BaselineVersion `
-        -ReleaseDirectory $ReleaseDirectory `
-        -CurrentTrustPackDirectory $TrustPackDirectory `
-        -EvidenceDirectory $EvidenceDirectory `
-        -IsolatedAcceptanceEnvironment
-
-    $upgradeEvidencePath = Join-Path $EvidenceDirectory 'apl-win-014-upgrade-result.json'
-    if (-not (Test-Path -LiteralPath $upgradeEvidencePath -PathType Leaf)) { throw 'Upgrade sub-gate evidence is missing.' }
-    $upgrade = Get-Content -LiteralPath $upgradeEvidencePath -Raw -Encoding UTF8 | ConvertFrom-Json
-    if ([string]$upgrade.result -ne 'PASS') { throw 'Real cross-version upgrade sub-gate did not PASS.' }
-    if ([string]$upgrade.baseline_kind -ne $BaselineKind -or [string]$upgrade.baseline_version -ne $BaselineVersion) { throw 'Upgrade evidence does not describe the requested baseline.' }
-    $final.upgrade_gate = 'PASS'
-    $final.upgrade_evidence = $upgradeEvidencePath
-
-    # Inno Setup should remove its owned tree. A truly empty residual directory
-    # is harmless acceptance residue; remove only that empty directory before
-    # the clean current-release sub-gate. Never delete a non-empty tree here.
-    $installRoot = Join-Path ([Environment]::GetFolderPath('MyDocuments')) 'ArvectumProxyLauncher'
-    if (Test-Path -LiteralPath $installRoot -PathType Container) {
-        $remaining = @(Get-ChildItem -LiteralPath $installRoot -Force -ErrorAction Stop)
-        if ($remaining.Count -eq 0) { Remove-Item -LiteralPath $installRoot -Force }
+    $args = @{
+        BasePolicyId = $BasePolicyId
+        BaselineSupplementalPolicyId = $BaselineSupplementalPolicyId
+        BaselineManifestPath = $BaselineManifestPath
+        BaselineTrustPackDirectory = $BaselineTrustPackDirectory
+        ReleaseDirectory = $ReleaseDirectory
+        CurrentTrustPackDirectory = $TrustPackDirectory
+        EvidenceDirectory = $EvidenceDirectory
+        IsolatedAcceptanceEnvironment = $true
     }
+    if ($SigningEvidencePath) { $args.SigningEvidencePath = $SigningEvidencePath }
 
-    # The sealed Russian release has a canonical long filename while the older
-    # current-release subgate resolves a historical local filename. Create only
-    # an exact-byte verified alias; this is local acceptance scaffolding, not a
-    # rebuilt or modified promoted artifact.
-    & $currentAliasScript -ReleaseDirectory $ReleaseDirectory
-    if ($LASTEXITCODE -ne 0) { throw 'Current sealed Setup filename alias preparation failed.' }
+    & $canonical @args
 
-    & $currentScript `
-        -Phase Enforced `
-        -BasePolicyId $BasePolicyId `
-        -ReleaseDirectory $ReleaseDirectory `
-        -TrustPackDirectory $TrustPackDirectory `
-        -EvidenceDirectory $EvidenceDirectory `
-        -IsolatedAcceptanceEnvironment
+    $evidencePath = Join-Path $EvidenceDirectory 'apl-win-014-enforced-result.json'
+    if (-not (Test-Path -LiteralPath $evidencePath -PathType Leaf)) {
+        throw 'Canonical enforced acceptance evidence is missing.'
+    }
+    $gate = Get-Content -LiteralPath $evidencePath -Raw -Encoding UTF8 | ConvertFrom-Json
+    if ([string]$gate.result -ne 'PASS') { throw 'Canonical enforced acceptance did not PASS.' }
+    if ([string]$gate.upgrade_gate -ne 'PASS') { throw 'Real cross-version upgrade sub-gate did not PASS.' }
+    if ([string]$gate.current_release_gate -ne 'PASS') { throw 'Exact current-release lifecycle sub-gate did not PASS.' }
+    if ([int]$gate.arvectum_3077_block_events -ne 0) { throw 'Canonical evidence contains Arvectum 3077 enforcement blocks.' }
 
-    $currentEvidencePath = Join-Path $EvidenceDirectory 'apl-win-014-enforced-result.json'
-    if (-not (Test-Path -LiteralPath $currentEvidencePath -PathType Leaf)) { throw 'Current-release enforced evidence is missing.' }
-    $current = Get-Content -LiteralPath $currentEvidencePath -Raw -Encoding UTF8 | ConvertFrom-Json
-    if ([string]$current.result -ne 'PASS') { throw 'Exact 0.2.3 enforced sub-gate did not PASS.' }
+    $final.upgrade_gate = 'PASS'
     $final.current_release_gate = 'PASS'
-    $final.current_release_evidence = $currentEvidencePath
-
+    $final.canonical_evidence = $evidencePath
     $final.result = 'PASS'
+}
+catch {
+    $gateError = $_
+    $final.block_reason = [string]$_.Exception.Message
 }
 finally {
     $final.finished_utc = [DateTime]::UtcNow.ToString('o')
@@ -127,9 +98,13 @@ finally {
     Write-Host "Final evidence: $finalPath"
 }
 
-if ($final.result -ne 'PASS') { throw 'APL-WIN-014 real App Control for Business local gate: BLOCK' }
+if ($final.result -ne 'PASS') {
+    if ($gateError) { throw $gateError }
+    throw 'APL-WIN-014 real App Control for Business local gate: BLOCK'
+}
+
 Write-Host 'APL-WIN-014 real App Control for Business local gate: PASS'
 Write-Host 'Cross-version upgrade: PASS'
 Write-Host 'Historical 0.2.2 P0.4 -> exact 0.2.3 cross-version upgrade: PASS'
-Write-Host 'Setup / first launch / GUI / core / PAC / rollback / repair / corruption recovery / uninstall: PASS'
+Write-Host 'Exact current 0.2.3 lifecycle: PASS'
 Write-Host 'Windows App Control remained enforced: PASS'
