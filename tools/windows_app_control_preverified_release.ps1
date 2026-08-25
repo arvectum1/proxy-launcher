@@ -13,7 +13,7 @@
 $script:ArvectumExpectedVersion = '0.2.3'
 $script:ArvectumExpectedTag = 'v0.2.3-ru.2'
 $script:ArvectumExpectedBuildCommit = '54ce2585222948b51c67510ea620516ea6c3f876'
-$script:ArvectumExpectedReleaseCommit = '47823585c42da54ab51c67510ea620516ea6c3f876'
+$script:ArvectumExpectedReleaseCommit = '47823585c42da54ab51dc2246583dc24d74d4ba6'
 $script:ArvectumExpectedSetupSha256 = '5808bde9d0ac45048d50bc256878519257f53bf0a9fa523a81ccb2eff0e21414'
 $script:ArvectumExpectedPortableSha256 = '62d313547b4d8c2c8e6951d6cd866bb954fdf199ad7650063c8ed3bfbc455801'
 $script:ArvectumExpectedApplicationSha256 = 'f8d98f987ce92dee7979b12b69a56d120ddb12244bebe2559bc51359a53f9c7a'
