@@ -82,16 +82,24 @@ Current host: dedicated x86-64 laptop, Windows 11 Enterprise 25H2, 512 GB SSD. I
 
 ### APL-WIN-014 — App Control for Business
 
-- **CURRENT / REAL HOST AVAILABLE**.
+- **CURRENT / LOCAL REAL-HOST GATE**.
 - Canonical runbook: `docs/APL_WIN_014_LOCAL_GATE.md`.
 - Windows 11 Enterprise is eligible.
 - Final PASS requires App Control for Business actually enforced plus both:
   - exact current `0.2.3` enforced acceptance;
-  - a real cross-version upgrade from a distinct sealed previous build.
+  - a real cross-version upgrade from the distinct retained `0.2.2 P0.4` baseline.
 - Same-version repair is not upgrade evidence.
-- Historical repository contains genuine `0.2.2` release commits (`18eeccd...`, `0ea08d9...`), but the exact trustworthy previous installer and governed hashes must be recovered/verified rather than manufactured.
-- **[Web] READY in parallel** — recover/reconcile the retained sealed 0.2.2 package/evidence.
-- **[Win] CURRENT** — prepare/deploy the lab App Control trust paths and run the final gate when baseline/current trust prerequisites are ready.
+- **[Web] DONE — exact previous baseline recovery/reconciliation**:
+  - selected historical commit `0ea08d9c815da36d0175f62db153de78f89731fc`;
+  - retained package `release/Arvectum-Proxy-Launcher-Windows-0.2.2-P0.4-client.zip`;
+  - immutable Git blob SHA-1 `574d3dc5f90a116555e3a72ff3288c31c19d3dc7`, size `15963815`;
+  - exact historical application SHA-256 `7EF02652E31BBBD68833BE599135CF59519C42B1F8A8FEBB580B3891FFC35EC0`;
+  - historical P0.4 QA: `RESULT: PASS`, `CUSTOMER UPDATE INSTALLER: APPROVED`, `77/77 PASS`;
+  - no retrospective rebuild or synthetic `0.2.2` Inno installer is used;
+  - recovery, exact-hash baseline trust and legacy-to-current upgrade harness are now governed in-repo.
+- Web evidence: `docs/evidence/APL_WIN_014_0_2_2_BASELINE_RECONCILIATION_2026-08-25.md`.
+- **[Win] CURRENT** — materialize the exact Git-retained P0.4 bytes locally, generate current and historical trust packs against the same base policy, deploy both supplemental policies through the lab/customer management path, keep the base policy Enforced, then execute `tools/windows_app_control_local_gate_complete.ps1`.
+- A denial of the genuine P0.4 installer/script bytes under Enforced App Control is a BLOCK/evidence condition; do not weaken App Control or use execution-policy bypass as a trust substitute.
 
 ### APL-REL-014 — exact signed-set lifecycle
 
@@ -169,7 +177,7 @@ Future branches after the decision: Linux cgroup/socket+nftables/policy-routing 
 ### [Web] ChatGPT/GitHub
 
 1. **DONE — APL-IP-001 post-#172 exact candidate/evidence reconciliation.**
-2. **READY — APL-WIN-014 previous sealed 0.2.2 baseline artifact/evidence recovery.**
+2. **DONE — APL-WIN-014 exact retained 0.2.2 P0.4 baseline recovery/reconciliation and harness preparation.**
 3. **DONE — GitHub -> GitVerse mirror recovery/verification.**
 4. **DONE — GitHub `main` protection restoration/acceptance after owner migration.**
 5. **READY / optional — APL-ROUTE-003 product/architecture decision work.**
@@ -180,7 +188,7 @@ Repository `main` protection has no remaining migration-recovery action. R-1/R-2
 
 ### [Win] ARVECTUM-DEMO
 
-1. **CURRENT — APL-WIN-014** once distinct sealed baseline/current trust prerequisites are ready.
+1. **CURRENT — APL-WIN-014:** exact P0.4 materialization + baseline/current trust preparation/deployment + enforced final gate.
 2. **READY — finish APL-REL-014 exact signed-set lifecycle/recovery evidence.**
 3. Export/hash-verify all Windows evidence before repartitioning.
 
@@ -196,11 +204,11 @@ No release-critical local acceptance task remains.
 
 Run three active streams without blocking one another:
 
-- **A — [Web + Win]** recover/reconcile the sealed 0.2.2 baseline and execute APL-WIN-014;
+- **A — [Win]** execute the now fully prepared APL-WIN-014 P0.4 -> 0.2.3 enforced local gate;
 - **B — [Human]** close R-1/R-2/R-3, confirm candidate factual provenance and make the explicit APL-IP-001 decision;
 - **C — [Web/Decision, optional]** APL-ROUTE-003 product/architecture decision work.
 
-Post-#172 APL-IP-001 hosted reconciliation and repository-owner migration governance are **DONE** and no longer occupy active Web streams.
+Post-#172 APL-IP-001 reconciliation, exact APL-WIN-014 predecessor recovery, and repository-owner migration governance are **DONE** and no longer occupy active Web streams.
 
 After Windows App Control / exact signed-set evidence are closed, convert ARVECTUM-DEMO to persistent Windows+Astra dual boot and execute **APL-LNX-010 -> Gate R8**.
 
