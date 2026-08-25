@@ -3,93 +3,145 @@ import unittest
 
 
 ROOT = Path(__file__).resolve().parents[1]
-UPGRADE = ROOT / "tools" / "windows_app_control_upgrade_acceptance.ps1"
+CANONICAL = ROOT / "tools" / "windows_app_control_enforced_acceptance.ps1"
 FINAL = ROOT / "tools" / "windows_app_control_local_gate_complete.ps1"
+PREVERIFIED = ROOT / "tools" / "windows_app_control_preverified_release.ps1"
 
 
 class WindowsAppControlFinalLocalGateContractTests(unittest.TestCase):
-    def test_upgrade_gate_requires_distinct_baseline_and_exact_hashes(self):
-        text = UPGRADE.read_text(encoding="utf-8")
+    def test_canonical_gate_requires_real_historical_baseline_and_exact_current(self):
+        text = CANONICAL.read_text(encoding="utf-8")
         for expected in (
-            "BaselineSetupSha256",
-            "BaselineApplicationSha256",
-            "BaselineVersion",
-            "BaselineSupplementalPolicyId",
-            "BaselineManifestPath",
-            "BaselineTrustPackDirectory",
-            "same-version repair is not accepted as upgrade evidence",
+            "0ea08d9c815da36d0175f62db153de78f89731fc",
+            "574d3dc5f90a116555e3a72ff3288c31c19d3dc7",
+            "7ef02652e31bbbd68833be599135cf59519c42b1f8a8febb580b3891ffc35ec0",
+            "5808bde9d0ac45048d50bc256878519257f53bf0a9fa523a81ccb2eff0e21414",
+            "f8d98f987ce92dee7979b12b69a56d120ddb12244bebe2559bc51359a53f9c7a",
             "real_cross_version_upgrade",
             "post_upgrade_exact_bytes",
             "state_preserved",
         ):
             self.assertIn(expected, text)
 
-    def test_upgrade_gate_requires_active_enforced_app_control(self):
-        text = UPGRADE.read_text(encoding="utf-8")
+    def test_canonical_gate_requires_true_enforcement_not_audit_mode(self):
+        text = CANONICAL.read_text(encoding="utf-8")
         for expected in (
             "CiTool",
             "-lp -json",
             "is_enforced",
             "is_on_disk",
-            "Base App Control policy is not enforced/on-disk",
+            "policy_options",
+            "Enabled:Audit Mode",
+            "real enforced acceptance is blocked",
             "Baseline supplemental policy is not active/on-disk",
             "Current supplemental policy is not active/on-disk",
         ):
             self.assertIn(expected, text)
 
-    def test_upgrade_gate_does_not_deploy_or_weaken_policy(self):
-        text = UPGRADE.read_text(encoding="utf-8").lower()
-        for forbidden in ("& $citool --update-policy", "& $citool --remove-policy", "verifiedandreputablepolicystate", "set-ruleoption"):
-            self.assertNotIn(forbidden, text)
+    def test_canonical_gate_does_not_deploy_remove_or_weaken_policy(self):
+        lowered = CANONICAL.read_text(encoding="utf-8").lower()
+        for forbidden in (
+            "--update-policy",
+            "--remove-policy",
+            "verifiedandreputablepolicystate",
+            "set-ruleoption",
+            "disable-windowsoptionalfeature",
+        ):
+            self.assertNotIn(forbidden, lowered)
 
-    def test_upgrade_gate_checks_code_integrity_blocks_and_post_state(self):
-        text = UPGRADE.read_text(encoding="utf-8")
+    def test_canonical_gate_uses_canonical_setup_and_never_alias(self):
+        text = CANONICAL.read_text(encoding="utf-8")
+        helper = PREVERIFIED.read_text(encoding="utf-8")
+        self.assertIn("Arvectum-Proxy-Launcher-0.2.3-windows-x64-setup.exe", helper)
+        self.assertIn("retired compatibility Setup alias", helper)
+        self.assertNotIn("ArvectumProxyLauncher-Setup-0.2.3.exe", text)
+
+    def test_canonical_gate_does_not_use_gui_status_stdout(self):
+        text = CANONICAL.read_text(encoding="utf-8")
+        self.assertNotIn("--status", text)
+        self.assertNotIn("system proxy:\\s*ENABLED", text)
+        self.assertNotIn("-notmatch 'RUNNING'", text)
+        for expected in (
+            "Get-NetTCPConnection",
+            "127.0.0.1:8082",
+            "proxy.pac",
+            "AutoConfigURL",
+            "ExecutablePath",
+        ):
+            self.assertIn(expected, text)
+
+    def test_start_is_asynchronous_and_rollback_has_timeout(self):
+        text = CANONICAL.read_text(encoding="utf-8")
+        self.assertIn("Intentionally no -Wait", text)
+        self.assertIn("Start-Process -FilePath $Installed.exe -ArgumentList @('--start') -PassThru", text)
+        self.assertIn("WaitForExit(20000)", text)
+
+    def test_current_lifecycle_includes_repair_and_uninstall(self):
+        text = CANONICAL.read_text(encoding="utf-8")
+        for expected in (
+            "current_clean_install_exact",
+            "current_pac_http",
+            "current_wininet_autoconfig",
+            "current_rollback",
+            "current_repair_from_missing_exe",
+            "current_uninstall",
+            "Arvectum Proxy Launcher Repair.exe",
+        ):
+            self.assertIn(expected, text)
+
+    def test_canonical_gate_checks_code_integrity_blocks_and_post_state(self):
+        text = CANONICAL.read_text(encoding="utf-8")
         for expected in (
             "Microsoft-Windows-CodeIntegrity/Operational",
             "3077",
-            "no_upgrade_enforcement_blocks",
+            "arvectum_3077_block_events",
+            "no_arvectum_enforcement_blocks",
             "app_control_remained_enforced",
-            "post_upgrade_uninstall",
         ):
             self.assertIn(expected, text)
 
-    def test_upgrade_gate_uses_real_recovered_0_2_2_as_canonical_baseline(self):
-        text = UPGRADE.read_text(encoding="utf-8")
+    def test_preverified_release_is_exact_hash_bound_and_does_not_claim_microsoft_trust(self):
+        text = PREVERIFIED.read_text(encoding="utf-8")
         for expected in (
-            "LegacyClientZip",
-            "0ea08d9c815da36d0175f62db153de78f89731fc",
-            "574d3dc5f90a116555e3a72ff3288c31c19d3dc7",
-            "baseline_exact_historical_bytes",
-            "baseline_gui_execution_under_enforcement",
+            "67d379db11a238960b9324c8054e73790cf18b1eaa85db8c04a9226bb27bc58e",
+            "47823585c42da54ab51dc2246583dc24d74d4ba6",
+            "rel011_detached_signature_verified",
+            "rel012_exact_release_verification",
+            "rel013_publication_decision",
+            "embedded_authenticode_claimed",
+            "smartscreen_trust_claimed",
+            "PREVERIFIED_EXACT_HASH_BOUND",
         ):
             self.assertIn(expected, text)
+        self.assertNotIn("CRYPTO_PRO_CSPTEST_PATH", text)
+        self.assertNotIn("csptest", text.lower())
 
-    def test_final_gate_cannot_pass_without_upgrade_and_current_release_subgates(self):
+    def test_final_wrapper_uses_only_canonical_v2_gate(self):
         text = FINAL.read_text(encoding="utf-8")
+        self.assertIn("windows_app_control_enforced_acceptance.ps1", text)
+        self.assertIn("windows_app_control_preverified_release.ps1", text)
+        self.assertNotIn("windows_app_control_current_release_alias.ps1", text)
+        self.assertNotIn("windows_app_control_upgrade_acceptance.ps1", text)
+        self.assertNotIn("windows_app_control_local_gate.ps1", text)
         for expected in (
-            "windows_app_control_upgrade_acceptance.ps1",
-            "windows_app_control_local_gate.ps1",
             "upgrade_gate = 'NOT_RUN'",
             "current_release_gate = 'NOT_RUN'",
             "$final.upgrade_gate = 'PASS'",
             "$final.current_release_gate = 'PASS'",
-            "if ($final.result -ne 'PASS')",
             "Historical 0.2.2 P0.4 -> exact 0.2.3 cross-version upgrade: PASS",
         ):
             self.assertIn(expected, text)
 
-    def test_final_gate_is_host_only_and_does_not_manage_app_control_policy(self):
+    def test_final_wrapper_is_host_only_and_does_not_manage_policy(self):
         text = FINAL.read_text(encoding="utf-8")
         lowered = text.lower()
         self.assertIn("IsolatedAcceptanceEnvironment", text)
-        self.assertIn("dedicated/isolated Windows 11 acceptance host", text)
+        self.assertIn("dedicated/isolated Windows 11", text)
+        self.assertIn("physical acceptance host", text)
         self.assertIn("abandoned Windows VM", text)
         self.assertIn("path is out of scope", text)
-        self.assertIn("dedicated physical acceptance host", text)
-        self.assertIn("LegacyClientZip", text)
-        for forbidden in ("--update-policy", "--remove-policy"):
-            self.assertNotIn(forbidden, lowered)
-        self.assertNotIn("VerifiedAndReputablePolicyState", text)
+        for forbidden in ("--update-policy", "--remove-policy", "Set-RuleOption"):
+            self.assertNotIn(forbidden.lower(), lowered)
 
 
 if __name__ == "__main__":
