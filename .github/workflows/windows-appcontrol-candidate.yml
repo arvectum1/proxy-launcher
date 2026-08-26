@@ -1,0 +1,105 @@
+name: Windows App Control candidate
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main, 'release/**', 'fix/**']
+  workflow_dispatch:
+
+concurrency:
+  group: windows-appcontrol-candidate-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  candidate:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12.10'
+
+      - name: Install pinned Inno Setup 6.7.1
+        shell: pwsh
+        run: choco install innosetup --version=6.7.1 --no-progress -y
+
+      - name: Validate post-incident contracts and PowerShell syntax
+        shell: pwsh
+        run: |
+          foreach ($script in @(
+            'tools/build_windows_appcontrol_static_runtime.ps1',
+            'tools/build_windows_appcontrol_recovery.ps1',
+            'tools/build_windows_appcontrol_installer.ps1',
+            'tools/windows_app_control_enforced_readiness.ps1',
+            'qa/windows_appcontrol_candidate_e2e.ps1'
+          )) {
+            [void][scriptblock]::Create((Get-Content -LiteralPath $script -Raw))
+            Write-Host "PowerShell syntax PASS: $script"
+          }
+          python -m unittest `
+            tests.test_windows_app_control_post_incident_hardening `
+            tests.test_windows_app_control_enterprise_candidate `
+            tests.test_portable_lifecycle_static_runtime `
+            -v
+
+      - name: Build canonical portable license source
+        shell: pwsh
+        run: |
+          ./tools/clean_build_windows.ps1 -PythonExecutable python
+          $zip = Get-ChildItem -LiteralPath out -Filter '*-windows-x64-portable.zip' -File | Select-Object -First 1
+          if (-not $zip) { throw 'Canonical portable ZIP was not produced.' }
+          ./tools/windows_promoted_license_compliance.ps1 -PortableZip $zip.FullName
+
+      - name: Build synthetic predecessor lifecycle fixture
+        id: predecessor
+        shell: pwsh
+        run: ./tools/build_windows_installer.ps1 -PythonExecutable python -SyntheticPredecessor
+
+      - name: Build App Control enterprise candidate
+        id: candidate
+        shell: pwsh
+        run: |
+          ./tools/build_windows_appcontrol_installer.ps1 -PythonExecutable '.build-venv\Scripts\python.exe'
+          $bundle = Get-ChildItem -LiteralPath out -Directory -Filter '*-windows-x64-appcontrol-setup-bundle' | Select-Object -First 1
+          if (-not $bundle) { throw 'App Control candidate bundle directory was not produced.' }
+          $setupDir = Join-Path $bundle.FullName 'setup'
+          $setup = Get-ChildItem -LiteralPath $setupDir -Filter '*.exe' -File | Select-Object -First 1
+          $data = @(Get-ChildItem -LiteralPath $setupDir -Filter '*.bin' -File)
+          if (-not $setup) { throw 'App Control candidate Setup EXE is missing.' }
+          if ($data.Count -lt 1) { throw 'App Control candidate Setup BIN is missing.' }
+          $zip = Get-ChildItem -LiteralPath out -Filter '*-windows-x64-appcontrol-setup-bundle.zip' -File | Select-Object -First 1
+          if (-not $zip) { throw 'App Control candidate ZIP is missing.' }
+          "setup_path=$($setup.FullName)" >> $env:GITHUB_OUTPUT
+          "bundle_zip=$($zip.FullName)" >> $env:GITHUB_OUTPUT
+          "bundle_name=$($zip.Name)" >> $env:GITHUB_OUTPUT
+
+      - name: Fresh repair migration uninstall lifecycle
+        shell: pwsh
+        run: |
+          ./qa/windows_appcontrol_candidate_e2e.ps1 `
+            -CandidateSetup '${{ steps.candidate.outputs.setup_path }}' `
+            -PredecessorSetup '${{ steps.predecessor.outputs.predecessor_setup_path }}' `
+            -EvidencePath 'out\windows-appcontrol-candidate-e2e.json'
+
+      - name: Upload failure diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-appcontrol-candidate-failure-${{ github.run_id }}
+          if-no-files-found: ignore
+          path: |
+            out/windows-appcontrol-candidate-e2e.json
+            out/*appcontrol*/**/*.json
+            ${{ runner.temp }}/apl-appcontrol-candidate-e2e-*/logs/*.log
+
+      - name: Upload candidate bundle and lifecycle evidence
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.candidate.outputs.bundle_name }}
+          path: |
+            ${{ steps.candidate.outputs.bundle_zip }}
+            out/windows-appcontrol-candidate-e2e.json
+            out/*appcontrol*/**/*.json
