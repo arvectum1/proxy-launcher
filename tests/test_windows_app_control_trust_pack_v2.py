@@ -3,20 +3,55 @@ import unittest
 
 
 ROOT = Path(__file__).resolve().parents[1]
+PROVISIONAL = ROOT / "tools" / "windows_app_control_provisional_trust_pack.ps1"
 V2 = ROOT / "tools" / "windows_app_control_enterprise_trust_pack_v2.ps1"
 READINESS = ROOT / "tools" / "windows_app_control_enforced_readiness.ps1"
 
 
 class WindowsAppControlTrustPackV2Tests(unittest.TestCase):
-    def test_v2_requires_real_enforced_lifecycle_and_recovery_evidence(self):
+    def test_provisional_pack_breaks_circular_dependency_without_claiming_acceptance(self):
+        text = PROVISIONAL.read_text(encoding="utf-8")
+        for expected in (
+            "arvectum.proxy.windows-app-control-provisional-trust-pack.v1",
+            "purpose = 'rehearsal-only'",
+            "final_acceptance_evidence = $false",
+            "enforced_lifecycle_ready = $false",
+            "New-CIPolicy",
+            "-Level Hash",
+            "Set-CIPolicyIdInfo",
+            "-SupplementsBasePolicyID",
+            "Set-RuleOption -FilePath $xml -Option 3 -Delete",
+            "ConvertFrom-CIPolicy",
+            "reference_uninstaller_sha256",
+            "uninstaller_deterministic",
+            "normal_uninstaller_determinism = 'PASS'",
+        ):
+            self.assertIn(expected, text)
+        lowered = text.lower()
+        for forbidden in (
+            "& $citool --update-policy",
+            "--remove-policy",
+            "set-mppreference",
+            "verifiedandreputablepolicystate",
+        ):
+            self.assertNotIn(forbidden, lowered)
+
+    def test_v2_requires_real_enforced_lifecycle_and_recovery_bound_to_provisional_bytes(self):
         text = V2.read_text(encoding="utf-8")
         for expected in (
+            "ProvisionalTrustPackDirectory",
             "EnforcedLifecycleEvidencePath",
             "RecoveryRehearsalEvidencePath",
+            "arvectum.proxy.windows-app-control-provisional-trust-pack.v1",
             "arvectum.proxy.windows-app-control-enforced-lifecycle.v1",
             "arvectum.proxy.apl-win-014-native-recovery-rehearsal.v1",
             "environment -ne 'Enforced'",
             "Enforced/ConstrainedLanguage",
+            "provisional_trust_pack_manifest_sha256",
+            "provisional_cip_sha256",
+            "supplemental_policy_id",
+            "runtime_entry_sha256",
+            "uninstaller_sha256",
             "base_remained_enforced",
             "supplemental_remained_active",
             "code_integrity_3077_blocks",
@@ -27,38 +62,24 @@ class WindowsAppControlTrustPackV2Tests(unittest.TestCase):
         ):
             self.assertIn(expected, text)
 
-    def test_v2_requires_static_runtime_setupldr_disabled_and_reference_uninstaller(self):
-        text = V2.read_text(encoding="utf-8")
-        for expected in (
-            "static_runtime",
-            "pyinstaller_onefile",
-            "setup_loader -ne 'disabled'",
-            "setup_runs_from_temp",
-            "rescue-runtime\\static-runtime.json",
-            "legacy top-level onefile executable survives",
-            "exactly one generated Inno uninstaller",
-            "UseSetupLdr=no sibling BIN is missing",
-        ):
-            self.assertIn(expected, text)
-
-    def test_v2_hash_policy_sanitizes_audit_option_and_never_deploys(self):
+    def test_v2_promotes_exact_rehearsal_tested_policy_instead_of_rebuilding_it(self):
         text = V2.read_text(encoding="utf-8")
         lowered = text.lower()
         for expected in (
-            "New-CIPolicy",
-            "-Level Hash",
-            "Set-CIPolicyIdInfo",
-            "-SupplementsBasePolicyID",
-            "Set-RuleOption -FilePath $xml -Option 3 -Delete",
-            "Enabled:Audit Mode",
-            "ConvertFrom-CIPolicy",
+            "Copy-Item -LiteralPath $provisionalXml",
+            "Copy-Item -LiteralPath $provisionalCip",
+            "the exact rehearsal-tested provisional XML/CIP is copied unchanged",
             "arvectum.proxy.windows-app-control-enterprise-trust-pack.v2",
             "mode = 'StaticRuntimeLifecycleHash'",
             "enforced_lifecycle_ready = $true",
+            "installer_lifecycle_complete = $true",
         ):
             self.assertIn(expected, text)
         for forbidden in (
-            "& $citool --update-policy",
+            "new-cipolicy",
+            "set-cipolicyidinfo",
+            "convertfrom-cipolicy",
+            "--update-policy",
             "--remove-policy",
             "set-mppreference",
             "verifiedandreputablepolicystate",
