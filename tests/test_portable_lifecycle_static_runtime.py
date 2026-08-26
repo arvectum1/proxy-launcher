@@ -11,6 +11,15 @@ import portable_lifecycle
 
 
 class StaticRuntimePortableLifecycleTests(unittest.TestCase):
+    def setUp(self):
+        self._previous_core = portable_lifecycle._CORE
+
+    def tearDown(self):
+        # These tests intentionally rebind the module-level composition owner.
+        # Restore it so later legacy onefile tests observe the canonical core,
+        # not the temporary static-runtime fixture from this class.
+        portable_lifecycle._CORE = self._previous_core
+
     def _core(self, stable_target: Path):
         core = types.SimpleNamespace()
         core._INSTALL_OWNER_MARKER = ".arvectum-install-owner"
