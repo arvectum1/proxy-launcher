@@ -1,12 +1,18 @@
 """Canonical portable-executable lifecycle for Arvectum Proxy Launcher.
 
 Owns the Windows portable stable-copy lifecycle: hash-verified replacement, install-owner marking, safe handoff and canonical-install recognition. Runtime collaborators resolve through the canonical composition module.
+
+App-Control static-runtime packages are deliberately different from historical
+PyInstaller onefile portable packages: an onedir executable must never be copied
+away from its sibling DLL/PYD runtime. A validated ``static-runtime.json`` marker
+therefore makes that frozen runtime in-place and disables onefile self-handoff.
 """
 
 from __future__ import annotations
 
 import hashlib
 import io
+import json
 import os
 import shutil
 import subprocess
@@ -38,23 +44,83 @@ def _sha256_file(path: str) -> str:
     return digest.hexdigest()
 
 
+def _static_runtime_manifest() -> dict | None:
+    """Return a validated onedir marker for the currently running frozen EXE."""
+    if not getattr(sys, "frozen", False):
+        return None
+    source = os.path.realpath(sys.executable)
+    marker = os.path.join(os.path.dirname(source), "static-runtime.json")
+    if not os.path.isfile(marker):
+        return None
+    try:
+        with io.open(marker, "r", encoding="utf-8-sig") as stream:
+            manifest = json.load(stream)
+        if manifest.get("schema") != "arvectum.proxy.windows-app-control-static-runtime.v1":
+            return None
+        if manifest.get("result") != "PASS":
+            return None
+        if manifest.get("packaging_layout") != "static-runtime":
+            return None
+        if manifest.get("pyinstaller_onefile") is not False:
+            return None
+        if manifest.get("entry_executable") != os.path.basename(source):
+            return None
+        expected = str(manifest.get("entry_sha256") or "").lower()
+        if len(expected) != 64 or _sha256_file(source).lower() != expected:
+            return None
+        return manifest
+    except Exception:
+        return None
+
+
+def _static_runtime_install_root() -> str | None:
+    """Return the owned installation root for an installed static runtime.
+
+    Rescue-runtime copies intentionally have the same static marker but no
+    install-owner marker. They remain runnable for recovery yet can never become
+    a persistent autostart target by accident.
+    """
+    core = _core()
+    if _static_runtime_manifest() is None:
+        return None
+    source_dir = os.path.dirname(os.path.realpath(sys.executable))
+    runtime_parent = os.path.dirname(source_dir)
+    if os.path.basename(runtime_parent).lower() != "runtime":
+        return None
+    install_root = os.path.dirname(runtime_parent)
+    marker = os.path.join(install_root, core._INSTALL_OWNER_MARKER)
+    try:
+        with io.open(marker, "r", encoding="ascii") as stream:
+            value = stream.read().strip()
+    except OSError:
+        return None
+    if value != core._INSTALL_OWNER_VALUE:
+        return None
+    return install_root
+
+
 def _is_historical_documents_copy(path: str) -> bool:
     core = _core()
     return core._same_path(path, core.stable_app_exe())
 
 
 def ensure_stable_app_copy() -> str | None:
-    """Copy a frozen Windows portable launcher to the canonical Documents path.
+    """Return/copy a Windows frozen launcher to its governed execution location.
 
-    Copying is best-effort so a launcher opened from Downloads can still render
-    actionable UI. An existing canonical copy is used only when its SHA-256
-    matches the running executable; otherwise it is atomically replaced.
+    Historical onefile portable builds keep the hash-verified Documents self-copy
+    behavior. App-Control static-runtime (onedir) builds MUST stay beside their
+    runtime DLL/PYD files and are therefore returned in place without copying.
     """
     core = _core()
     if not (core.is_windows() and getattr(sys, "frozen", False)):
         return None
     core._LAST_SELF_HEAL_ERROR = ""
     source = os.path.realpath(sys.executable)
+
+    if _static_runtime_manifest() is not None:
+        core._log("static runtime detected; onefile stable-copy self-heal is disabled")
+        return source
+
     target = os.path.realpath(core.stable_app_exe())
     if core._same_path(source, target):
         return target
@@ -102,13 +168,21 @@ def managed_executable() -> str | None:
     core = _core()
     if not getattr(sys, "frozen", False):
         return None
+    if _static_runtime_manifest() is not None:
+        if _static_runtime_install_root() is None:
+            return None
+        return os.path.realpath(sys.executable)
     return core.ensure_stable_app_copy()
 
 
 def handoff_to_stable_copy(arguments: Iterable[str] | None = None) -> bool:
-    """Continue a portable launch only from the matching canonical copy."""
+    """Continue a portable launch only from the matching governed location."""
     core = _core()
     if not (core.is_windows() and getattr(sys, "frozen", False)):
+        return False
+    if _static_runtime_manifest() is not None:
+        # onedir must execute in place with its sibling runtime; never copy/handoff
+        # only the EXE to the historical top-level Documents location.
         return False
     source = os.path.realpath(sys.executable)
     target = core.ensure_stable_app_copy()
@@ -130,12 +204,15 @@ def handoff_to_stable_copy(arguments: Iterable[str] | None = None) -> bool:
 
 
 def canonical_install_exe() -> str | None:
-    """Return the canonical Documents path only when it matches this executable."""
+    """Return the current executable only when it is a governed installed runtime."""
     core = _core()
     if not getattr(sys, "frozen", False):
         return None
-    target = os.path.realpath(core.stable_app_exe())
     source = os.path.realpath(sys.executable)
+    if _static_runtime_manifest() is not None:
+        return source if _static_runtime_install_root() is not None else None
+
+    target = os.path.realpath(core.stable_app_exe())
     if core._same_path(source, target):
         return None
     try:
@@ -157,6 +234,8 @@ def handoff_to_canonical_install() -> bool:
 def install_into_core(core: ModuleType) -> ModuleType:
     """Expose canonical portable-lifecycle seams through the core module object."""
     core._sha256_file = _sha256_file
+    core._static_runtime_manifest = _static_runtime_manifest
+    core._static_runtime_install_root = _static_runtime_install_root
     core._is_historical_documents_copy = _is_historical_documents_copy
     core.ensure_stable_app_copy = ensure_stable_app_copy
     core.self_heal_error = self_heal_error
