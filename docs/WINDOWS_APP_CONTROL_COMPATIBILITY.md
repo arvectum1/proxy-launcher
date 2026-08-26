@@ -1,188 +1,119 @@
 # APL-WIN-014 — Windows application-control execution compatibility
 
-Status: **AUTONOMOUS IMPLEMENTATION / REAL APP-CONTROL ACCEPTANCE PENDING**
+Status: **REAL ENFORCED ACCEPTANCE PAUSED / PACKAGING HARDENING REQUIRED**
 
-## Problem
+## Security boundary
 
-Windows `0.2.3` is governed by the Russian-first release contour: the exact release manifest is signed and verified with the controlled CryptoPro/Rutoken identity. That detached signature proves release-set integrity and provenance but does not embed a Windows Authenticode signature into the executable.
+Arvectum's Russian detached CryptoPro/Rutoken release signature proves release-set provenance and integrity. It is **not** Microsoft Authenticode execution trust. App Control for Business admission is a separate control plane.
 
-A real owner workstation with Windows application-control enforcement refused to execute the restored legacy Arvectum Proxy Launcher EXE. The same host recovered successfully when the product was run from repository source under an already trusted controlled Python runtime.
+Non-negotiable rules:
 
-This proves that release provenance and Windows execution trust are separate controls.
+1. Do not disable or weaken App Control for Business, Smart App Control or Defender to make Arvectum run.
+2. Do not change `VerifiedAndReputablePolicyState` from product tooling.
+3. Do not represent detached Russian release evidence as Authenticode/SmartScreen trust.
+4. Arvectum release tooling may generate customer trust artifacts but must not silently deploy or remove customer policy.
+5. Any destructive Audit -> Enforced acceptance requires a separately proven recovery path that already ran successfully inside the actual Enforced language/runtime restrictions.
 
-Microsoft's current Windows guidance makes the same distinction:
+## Real ARVECTUM-DEMO result — 2026-08-26
 
-- Smart App Control can block unsigned code when its cloud reputation is insufficient;
-- Smart App Control treats a valid RSA code-signing signature from a trusted provider as an execution-trust signal;
-- App Control for Business supports organization-defined file rules including exact hash rules;
-- App Control for Business supports managed-installer trust for software deployed by an organization-designated installation system;
-- supplemental policies extend an approved base policy by union, but the base policy must explicitly allow supplements.
+The physical Windows 11 Enterprise acceptance stand **ARVECTUM-DEMO** exposed three production-significant gaps in the sealed `0.2.3` Windows packaging after the dedicated APL-WIN-014 base policy moved from Audit to Enforced.
 
-## Non-negotiable security rules
+### 1. PyInstaller `onefile` is not a deterministic App Control runtime
 
-1. Do **not** disable Smart App Control, App Control for Business, Defender application-control policy, or comparable Windows protections as a product workaround.
-2. Do **not** change `VerifiedAndReputablePolicyState` from Arvectum tooling.
-3. Do **not** claim that the current detached Russian release signature provides SmartScreen, Smart App Control or Authenticode execution trust.
-4. Do **not** deploy App Control policy automatically from an Arvectum release or installer.
-5. Customer App Control deployment is an administrator/governance action owned by the customer's IT/security team.
-6. Hash trust is exact-byte trust. New or rebuilt bytes require a new trust pack.
-7. A normal owner workstation is not an APL-REL-014 destructive acceptance environment.
+The exact `Arvectum Proxy Launcher.exe` was hash-authorized, but PyInstaller `onefile` extracted executable support files to `%TEMP%\_MEI...`. App Control blocked `python312.dll` first and the process failed with `Bad Image`.
 
-## Russian-first target architecture
+The emergency recovery proved that exact hashes for the full `_MEI` DLL/PYD runtime were required before `0.2.3` could start under Enforced policy. Runtime discovery after cutover is not an acceptable production trust model.
 
-APL-WIN-014 uses two independent trust planes.
+**Canonical direction:** Windows production packaging must use PyInstaller `onedir` (static one-folder runtime). Every executable DLL/PYD/runtime artifact must exist in the release tree before deployment and be included in release hashes and the App Control trust pack. No `_MEI` runtime discovery is allowed for the enterprise profile.
 
-### Plane A — Russian release provenance
+### 2. The single-file Inno Setup loader is not covered by Setup-EXE trust alone
 
-Unchanged from the existing release contour:
+The exact sealed Setup EXE itself was admitted, but installation failed with **Error 4551** because Inno Setup executed an internal temporary loader/helper that was not authorized by App Control.
 
-- exact release `v0.2.3-ru.2`;
-- detached CryptoPro/Rutoken signature and signer identity;
-- exact production release manifest;
-- published release gate `PUBLISH`;
-- exact installer, portable ZIP and application hashes.
+**Canonical direction:** the enterprise installer path must not depend on an untrusted executable copied to `%TEMP%`. The Inno profile must use an App-Control-compatible loader/layout and the complete installer execution set must be known before deployment.
 
-This remains the primary Arvectum evidence of release origin/integrity for the Russian market.
+### 3. PowerShell recovery was not valid under Enforced policy
 
-### Plane B — Windows execution authorization
+The cutover's recovery path had passed Audit preflight, but after enforcement PowerShell entered `ConstrainedLanguage`. Recovery then failed on method invocation that was legal in FullLanguage.
 
-For managed Russian B2B/government deployments, the primary path is **App Control for Business enterprise trust**, not disabling Windows security and not treating the Russian detached signature as Authenticode.
+**Canonical direction:** neither production maintenance nor emergency recovery may depend on unproven FullLanguage PowerShell after cutover. Recovery must be an independently testable artifact and must be rehearsed under Enforced/`ConstrainedLanguage` before a destructive transition is permitted.
 
-Two supported enterprise profiles are implemented.
+## Current stand state
 
-#### Profile 1 — exact-hash supplemental policy
+ARVECTUM-DEMO was recovered without weakening the base policy:
+
+- dedicated APL-WIN-014 base remains **Enforced**;
+- current supplemental remains active and was expanded with exact hashes from the observed `0.2.3` PyInstaller runtime solely as emergency stand recovery;
+- exact portable `0.2.3` is running;
+- PAC responds HTTP 200;
+- temporary manual Windows proxy is off;
+- WinINET PAC is restored to `http://127.0.0.1:8082/proxy.pac`;
+- **acceptance remains paused**.
+
+The emergency runtime-expanded supplemental is recovery evidence, not the production packaging design.
+
+## Target enterprise packaging contract
+
+### Static application runtime
+
+The canonical Windows build must:
+
+- use PyInstaller `onedir`, never `onefile`;
+- publish a stable `runtime/` subtree in the portable package;
+- include `runtime/Arvectum Proxy Launcher.exe` plus all DLL/PYD/support files required by that exact build;
+- emit `RUNTIME_SHA256SUMS.txt` binding every file in the runtime tree;
+- record runtime file count and a deterministic runtime-tree digest in `build-result.json`;
+- install the same static runtime tree byte-for-byte.
+
+### App Control trust pack
 
 Canonical generator:
 
 `tools/windows_app_control_enterprise_trust_pack.ps1`
 
-The generator:
+The forward enterprise mode is `StaticRuntimeHash`. It must hash the complete static runtime tree plus every executable installer/maintenance artifact required by the lifecycle.
 
-1. verifies the exact Russian release before policy creation;
-2. verifies the pinned installer, portable ZIP and application hashes;
-3. creates a multi-policy-format App Control policy using exact `Hash` rules;
-4. converts it to a supplemental policy for a customer-supplied base policy ID;
-5. emits XML + binary `.cip` + `trust-pack.json` + checksums + deployment guidance;
-6. never deploys the generated policy;
-7. never changes Smart App Control/App Control state.
+Generated supplemental XML must be sanitized so rule option 3 (`Enabled:Audit Mode`) is absent before conversion to `.cip`. The generator must preserve the customer base-policy relationship and must never deploy the policy itself.
 
-Modes:
+The historical sealed `0.2.3` `ReferenceFullHash` profile is retained only as evidence of the old design. The real stand proved that scanning the installed tree was insufficient for a PyInstaller `onefile` runtime because `_MEI` files did not exist in that tree before launch.
 
-- `BootstrapHash` — exact production Setup + exact application EXE. Useful as a narrow bootstrap allow-list.
-- `ReferenceFullHash` — exact production Setup plus the complete exact installed reference tree. This is the required hash mode for lifecycle coverage because generated maintenance binaries such as the Inno uninstaller must also be authorized.
+### Installer and maintenance
 
-`ReferenceFullHash` must be generated only from an isolated reference installation whose application EXE and cached repair Setup match the sealed production hashes exactly.
+Enterprise-compatible installation must satisfy all of these before APL-WIN-014 can resume:
 
-A customer's base policy must enable rule option 17 (`Allow Supplemental Policies`). If the base policy is signed, the customer's policy governance must also authorize the supplemental-policy signer; Arvectum tooling does not alter that base-policy trust configuration.
+- no hidden Setup loader/helper executable may appear only after launch and require ad-hoc trust;
+- no `ExtractTemporaryFile(... .ps1)` + Windows PowerShell maintenance chain under Enforced policy;
+- fresh install, repair, upgrade and uninstall must use only pre-authorized static artifacts and Windows/Inno primitives compatible with the effective policy;
+- rollback must remain fail-closed when network recovery cannot be proven;
+- durable `proxy_settings.json` and `no_proxy.txt` must survive upgrade/repair/uninstall as defined by the product lifecycle contract.
 
-#### Profile 2 — customer Managed Installer
+## Acceptance gate before another physical cutover
 
-For managed fleets using Intune, Configuration Manager or another organization-governed deployment system, Managed Installer is a sustainable path when the customer's security model accepts its trade-offs.
+A physical Audit -> Enforced transition is prohibited until all items below are green in an isolated Windows acceptance environment:
 
-Arvectum supplies:
+1. static `onedir` runtime build and exact runtime-tree manifest;
+2. enterprise installer execution without App Control event 3077 for Arvectum artifacts;
+3. clean install and first start under Enforced;
+4. PAC/listener/WinINET runtime proof without relying on GUI `--status` stdout;
+5. repair under Enforced;
+6. version-transition upgrade under Enforced;
+7. uninstall under Enforced;
+8. recovery artifact executed successfully while policy is already Enforced and PowerShell is in the actual effective language mode;
+9. recovery restores exact current release, durable configuration and PAC without returning the base policy to Audit;
+10. final cutover driver refuses to proceed without immutable Enforced-rehearsal evidence.
 
-- the exact release set;
-- Russian signature verification evidence;
-- exact hashes;
-- the trust-pack manifest and deployment boundary.
+Only after this matrix passes may APL-WIN-014 return to ARVECTUM-DEMO.
 
-Customer IT designates and governs the managed installer. Arvectum does not silently mark itself as a managed installer and does not modify the customer's base policy.
+## Managed Installer profile
 
-Managed Installer can reduce per-release hash-policy churn, but it is heuristic trust and is not equivalent to explicit hash/publisher rules. Microsoft documents important limitations: self-updated files do not automatically retain managed-installer origin, generated/downloaded binaries can require additional authorization, and administrator-level deployment requires careful security review. Therefore every Arvectum update used with this profile must be deployed through the customer's approved managed installer or separately authorized by policy.
-
-For high-assurance deployments where exact release bytes are fixed, `ReferenceFullHash` remains the more deterministic Arvectum-supplied policy artifact.
-
-## Read-only assessment
-
-Canonical script:
-
-`tools/windows_app_control_assess.ps1`
-
-It records without mutation:
-
-- Windows version/build;
-- `VerifiedAndReputablePolicyState` if present;
-- effective Code Integrity policies via `CiTool -lp -json` when available;
-- installed/release Authenticode state;
-- exact release verification result;
-- whether the installed EXE matches the sealed release EXE;
-- a conservative recommended path.
-
-The script contains no App Control deployment or policy-changing operation.
-
-## Safe permanent owner/developer path
-
-Canonical script:
-
-`tools/windows_owner_source_mode.ps1`
-
-The owner workstation may remain in a supported **source-mode owner/developer profile** while the public embedded-signing question remains unresolved.
-
-This profile:
-
-- runs repository source under the controlled local Python runtime;
-- preserves the existing persistent proxy settings under LocalAppData;
-- keeps the desktop shortcut on the source GUI;
-- maintains a source rollback recovery Run entry;
-- deliberately keeps main runtime autostart disabled, avoiding an unordered `--start` versus `--rollback` Windows Run race;
-- records Python SHA-256, repository commit/clean state and a recovery snapshot;
-- does not change Smart App Control or App Control policy;
-- does not require the blocked unsigned legacy EXE.
-
-The owner starts the product from the normal desktop shortcut after logon. This is a permanent **owner/developer operating profile**, not a customer production distribution format.
-
-## Why no automatic Smart App Control conversion on the owner workstation
-
-Smart App Control is a consumer/small-business policy layer built on Windows application-control technology. Microsoft documents that turning Smart App Control off is effectively one-way without resetting/reinstalling Windows.
-
-Therefore Arvectum tooling must not convert the owner's current Smart App Control state into an enterprise App Control policy merely to permit Arvectum. Any such policy transition requires an explicit workstation/security-management decision outside this task.
-
-## CI / contract verification
-
-APL-WIN-014 repository contracts include:
-
-- ASCII/Windows PowerShell 5.1 parse safety for the new scripts;
-- static proof that the assessment script is read-only;
-- static proof that trust-pack generation verifies the exact Russian release before policy creation;
-- static proof that generated policy uses `Hash`, `MultiplePolicyFormat`, a customer base policy ID and `ConvertFrom-CIPolicy`;
-- static proof that the generator does not invoke `CiTool --update-policy` or mutate Smart App Control registry state;
-- Windows ConfigCI smoke generation of a non-deployed supplemental hash policy;
-- owner source-mode contract proving it is non-production, main runtime autostart is disabled, and App Control state is unchanged.
-
-## Required customer/real-host acceptance
-
-Autonomous implementation does **not** replace a real App Control environment.
-
-APL-WIN-014 production-distribution acceptance requires a representative organization-managed Windows 11 host or disposable VM with App Control for Business enabled.
-
-Minimum acceptance matrix:
-
-1. read-only assessment captured;
-2. customer base policy identity confirmed and supplemental-policy permission confirmed;
-3. exact release verification PASS;
-4. enterprise trust pack generated from exact production bytes;
-5. policy tested in the customer's normal audit/staging procedure;
-6. exact Setup allowed without disabling protection;
-7. installed application first launch allowed;
-8. proxy core start / GUI / PAC / rollback work;
-9. cached repair works;
-10. upgrade path works with the new release's corresponding trust policy or Managed Installer;
-11. uninstall works;
-12. no unrelated application is newly trusted by the Arvectum supplemental rules;
-13. Russian detached release signature remains independently verifiable.
-
-For exact-hash fleet deployment, use `ReferenceFullHash`; `BootstrapHash` alone is not sufficient evidence for uninstall/maintenance coverage.
+A customer-governed Managed Installer remains a possible fleet profile when the customer's security model accepts it. It does not remove the requirement for Arvectum's own packages to have a deterministic, inspectable runtime layout. Self-generated/self-updated bytes must never be assumed trusted merely because the initial package came through a Managed Installer.
 
 ## Public/unmanaged Windows distribution
 
-Smart App Control public execution remains a separate boundary. Microsoft's current Smart App Control guidance requires a supported trusted RSA code-signing path for deterministic signature-based admission. The currently governed Russian qualified certificate is `RELEASE-EVIDENCE-ONLY` and does not satisfy that public execution-trust requirement.
+Public Smart App Control / SmartScreen trust remains a separate track from Russian release provenance and from organization-managed App Control for Business. Russian-first embedded code-signing research continues under the release-signing roadmap; international trust providers remain lower priority.
 
-Russian/domestic embedded-signing options must continue to be investigated first. International Microsoft-trusted public code signing remains a lower-priority fallback, not the default Russian-market dependency.
+## Related evidence
 
-## Relation to APL-REL-014
-
-APL-REL-014 destructive lifecycle acceptance is prohibited on a normal owner workstation after the 2026-08-20 incident. It may run only in a disposable/isolated Windows acceptance environment.
-
-Canonical incident evidence:
-
-`docs/evidence/APL_REL_014_OWNER_HOST_INCIDENT_2026-08-20.md`
+- GitHub issue #10 — `[Win] APL-WIN-014 harden Enforced App Control packaging and recovery after ARVECTUM-DEMO incident`.
+- `docs/evidence/APL_REL_014_OWNER_HOST_INCIDENT_2026-08-20.md` — earlier owner-host destructive acceptance boundary.
+- `tools/windows_app_control_enforced_acceptance.ps1` — historical sealed `0.2.3` acceptance harness; it must not be rerun on the physical stand until this hardening work is complete.
