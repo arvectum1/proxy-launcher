@@ -36,7 +36,12 @@ if ($actualInputSha256 -ne $expectedInputSha256) {
     throw "Refusing to patch unknown stand driver. Expected SHA256 $expectedInputSha256, found $actualInputSha256."
 }
 
-$text = Get-Content -LiteralPath $inputResolved -Raw -Encoding UTF8
+# The validated stand-kit stores LF line endings, while Git checkout on a Windows
+# runner can materialize this patcher itself with CRLF. Normalize all compared
+# strings so the fail-closed exact-block checks are content-exact but newline-style
+# independent. The output remains bound by a newly generated SHA256 and harness
+# supplemental, so this does not weaken byte identity on the stand.
+$text = (Get-Content -LiteralPath $inputResolved -Raw -Encoding UTF8) -replace "`r`n","`n"
 
 $oldHealth = @'
 function Assert-Sealed023CurrentHealthy {
@@ -64,6 +69,8 @@ function Assert-Sealed023CurrentHealthy {
 }
 '@
 
+$oldHealth = $oldHealth -replace "`r`n","`n"
+$newHealth = $newHealth -replace "`r`n","`n"
 if (($text.Split($oldHealth).Count - 1) -ne 1) {
     throw 'Expected exact Assert-Sealed023CurrentHealthy block was not found exactly once; refusing to patch.'
 }
@@ -111,6 +118,8 @@ function Remove-CurrentInstallAfterRollback {
 }
 '@
 
+$oldRemoval = $oldRemoval -replace "`r`n","`n"
+$newRemoval = $newRemoval -replace "`r`n","`n"
 if (($text.Split($oldRemoval).Count - 1) -ne 1) {
     throw 'Expected exact Remove-CurrentInstallAfterRollback block was not found exactly once; refusing to patch.'
 }
