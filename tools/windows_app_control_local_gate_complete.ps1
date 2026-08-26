@@ -2,16 +2,20 @@
 .SYNOPSIS
     Canonical completion wrapper for the APL-WIN-014 real enforced local gate.
 .DESCRIPTION
-    Final PASS is emitted only after the canonical enforced acceptance proves BOTH:
-      1. immutable historical 0.2.2 P0.4 -> exact sealed 0.2.3 upgrade;
-      2. exact sealed 0.2.3 install/start/PAC/rollback/repair/uninstall lifecycle.
+    Final PASS is emitted only after a fail-closed readiness barrier and the canonical
+    enforced acceptance prove BOTH:
+      1. immutable historical 0.2.2 P0.4 -> exact current cross-version upgrade;
+      2. exact current install/start/PAC/rollback/repair/uninstall lifecycle.
+
+    The readiness barrier exists because real ARVECTUM-DEMO testing proved that the
+    legacy v0.2.3 ReferenceFullHash / PyInstaller onefile trust model does not cover
+    _MEI runtime DLL/PYD files or Inno Setup temporary lifecycle helpers. Destructive
+    acceptance is therefore blocked until a v2 static-runtime trust pack and a real
+    Enforced/ConstrainedLanguage recovery rehearsal are present.
 
     The wrapper is host-only acceptance tooling for a dedicated/isolated Windows 11
     physical acceptance host. It never deploys/removes App Control policy and never
     changes Smart App Control, Defender, or policy rule options.
-
-    The abandoned Windows VM path is out of scope. Policy deployment/cutover is owned
-    by the separate lab procedure. The old Setup filename alias path is retired.
 #>
 [CmdletBinding()]
 param(
@@ -35,7 +39,8 @@ if (-not $IsolatedAcceptanceEnvironment) {
 
 $canonical = Join-Path $PSScriptRoot 'windows_app_control_enforced_acceptance.ps1'
 $helper = Join-Path $PSScriptRoot 'windows_app_control_preverified_release.ps1'
-foreach ($required in @($canonical,$helper)) {
+$readiness = Join-Path $PSScriptRoot 'windows_app_control_enforced_readiness.ps1'
+foreach ($required in @($canonical,$helper,$readiness)) {
     if (-not (Test-Path -LiteralPath $required -PathType Leaf)) {
         throw "Required canonical acceptance script is missing: $required"
     }
@@ -43,21 +48,27 @@ foreach ($required in @($canonical,$helper)) {
 
 New-Item -ItemType Directory -Path $EvidenceDirectory -Force | Out-Null
 $final = [ordered]@{
-    schema = 'arvectum.proxy.apl-win-014-final-local-gate.v3'
+    schema = 'arvectum.proxy.apl-win-014-final-local-gate.v4'
     task = 'APL-WIN-014'
     host = $env:COMPUTERNAME
     base_policy_id = $BasePolicyId.ToString('B')
     baseline_kind = 'LegacyClientZip'
     baseline_version = '0.2.2'
-    current_version = '0.2.3'
+    current_version = '0.2.3+'
     started_utc = [DateTime]::UtcNow.ToString('o')
     result = 'BLOCK'
+    readiness_gate = 'NOT_RUN'
     upgrade_gate = 'NOT_RUN'
     current_release_gate = 'NOT_RUN'
 }
 
 $gateError = $null
 try {
+    # Fail closed before any lifecycle mutation. The legacy v0.2.3 v1/ReferenceFullHash
+    # trust pack is intentionally rejected after the ARVECTUM-DEMO incident.
+    & $readiness -TrustPackDirectory $TrustPackDirectory -ExpectedBasePolicyId $BasePolicyId
+    $final.readiness_gate = 'PASS'
+
     $args = @{
         BasePolicyId = $BasePolicyId
         BaselineSupplementalPolicyId = $BaselineSupplementalPolicyId
@@ -104,7 +115,8 @@ if ($final.result -ne 'PASS') {
 }
 
 Write-Host 'APL-WIN-014 real App Control for Business local gate: PASS'
+Write-Host 'Enforced destructive readiness: PASS'
 Write-Host 'Cross-version upgrade: PASS'
-Write-Host 'Historical 0.2.2 P0.4 -> exact 0.2.3 cross-version upgrade: PASS'
-Write-Host 'Exact current 0.2.3 lifecycle: PASS'
+Write-Host 'Historical 0.2.2 P0.4 -> exact current cross-version upgrade: PASS'
+Write-Host 'Exact current lifecycle: PASS'
 Write-Host 'Windows App Control remained enforced: PASS'
