@@ -75,7 +75,7 @@ if (-not (Test-Path -LiteralPath $entry -PathType Leaf)) {
     throw 'Static runtime entry executable is missing.'
 }
 
-Copy-Item -LiteralPath (Join-Path $runtimeSource '*') -Destination $OutputDirectory -Recurse -Force
+Copy-Item -Path (Join-Path $runtimeSource '*') -Destination $OutputDirectory -Recurse -Force
 $entryOut = Join-Path $OutputDirectory 'Arvectum Proxy Launcher.exe'
 if (-not (Test-Path -LiteralPath $entryOut -PathType Leaf)) { throw 'Static runtime copy is incomplete.' }
 
