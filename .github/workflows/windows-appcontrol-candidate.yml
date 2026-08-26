@@ -40,6 +40,7 @@ jobs:
             [void][scriptblock]::Create((Get-Content -LiteralPath $script -Raw))
             Write-Host "PowerShell syntax PASS: $script"
           }
+          python -m py_compile tools/extract_pyinstaller_onefile_runtime.py
           python -m unittest `
             tests.test_windows_app_control_post_incident_hardening `
             tests.test_windows_app_control_enterprise_candidate `
@@ -54,6 +55,35 @@ jobs:
           $zip = Get-ChildItem -LiteralPath out -Filter '*-windows-x64-portable.zip' -File | Select-Object -First 1
           if (-not $zip) { throw 'Canonical portable ZIP was not produced.' }
           ./tools/windows_promoted_license_compliance.ps1 -PortableZip $zip.FullName
+
+      - name: Prepare immutable 0.2.2 P0.4 onefile trust inputs without execution
+        id: historical
+        shell: pwsh
+        run: |
+          $zip = (Resolve-Path 'release\Arvectum-Proxy-Launcher-Windows-0.2.2-P0.4-client.zip').Path
+          $expectedZip = 'd0de0dcea1814871de104981aa4f8ff4b5da6be143b334699741001b70fc6b0a'
+          $actualZip = (Get-FileHash -LiteralPath $zip -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($actualZip -ne $expectedZip) { throw 'Immutable 0.2.2 P0.4 ZIP SHA256 mismatch.' }
+          $package = (Join-Path $PWD 'out\historical-0.2.2-p0.4-package')
+          $runtime = (Join-Path $PWD 'out\historical-0.2.2-p0.4-onefile-runtime')
+          Remove-Item -LiteralPath $package,$runtime -Recurse -Force -ErrorAction SilentlyContinue
+          Expand-Archive -LiteralPath $zip -DestinationPath $package -Force
+          $exe = Join-Path $package 'Arvectum Proxy Launcher.exe'
+          if (-not (Test-Path -LiteralPath $exe -PathType Leaf)) { throw 'Historical 0.2.2 Launcher is missing after extraction.' }
+          $expectedExe = '7ef02652e31bbbd68833be599135cf59519c42b1f8a8febb580b3891ffc35ec0'
+          if ((Get-FileHash -LiteralPath $exe -Algorithm SHA256).Hash.ToLowerInvariant() -ne $expectedExe) {
+            throw 'Historical 0.2.2 Launcher SHA256 mismatch.'
+          }
+          & '.build-venv\Scripts\python.exe' 'tools\extract_pyinstaller_onefile_runtime.py' `
+            --input $exe --output $runtime
+          if ($LASTEXITCODE -ne 0) { throw 'Historical onefile runtime extraction failed.' }
+          $inventory = Get-Content (Join-Path $runtime 'onefile-runtime.json') -Raw | ConvertFrom-Json
+          if ([string]$inventory.result -ne 'PASS' -or [bool]$inventory.executed_input) {
+            throw 'Historical onefile runtime inventory is not safe/PASS.'
+          }
+          if ([int]$inventory.executable_member_count -lt 2) { throw 'Historical onefile native runtime inventory is unexpectedly empty.' }
+          "package_dir=$((Resolve-Path $package).Path)" >> $env:GITHUB_OUTPUT
+          "runtime_dir=$((Resolve-Path $runtime).Path)" >> $env:GITHUB_OUTPUT
 
       - name: Build synthetic predecessor lifecycle fixture
         id: predecessor
@@ -95,10 +125,14 @@ jobs:
             -EnterpriseBundleDirectory '${{ steps.candidate.outputs.bundle_dir }}' `
             -BasePolicyId 'DC1C604C-46EA-40B7-9F47-CF582B225D5E' `
             -NormalLifecycleEvidencePath 'out\windows-appcontrol-candidate-e2e.json' `
+            -HistoricalPackageDirectory '${{ steps.historical.outputs.package_dir }}' `
+            -HistoricalRuntimeDirectory '${{ steps.historical.outputs.runtime_dir }}' `
             -OutputDirectory 'out\app-control-provisional-trust'
           $manifest = Get-Content 'out\app-control-provisional-trust\provisional-trust-pack.json' -Raw | ConvertFrom-Json
           if ([bool]$manifest.enforced_lifecycle_ready) { throw 'Provisional policy illegally claims Enforced readiness.' }
           if ([bool]$manifest.final_acceptance_evidence) { throw 'Provisional policy illegally claims final acceptance.' }
+          if ([bool]$manifest.historical_onefile_input_executed_during_trust_build) { throw 'Historical onefile input was executed during trust build.' }
+          if ([int]$manifest.historical_onefile_runtime_executable_count -lt 2) { throw 'Historical onefile native runtime trust is missing.' }
           $cip = Join-Path 'out\app-control-provisional-trust' ([string]$manifest.supplemental_policy_cip)
           if (-not (Test-Path -LiteralPath $cip -PathType Leaf)) { throw 'Provisional CIP is missing.' }
           "manifest_path=$((Resolve-Path 'out\app-control-provisional-trust\provisional-trust-pack.json').Path)" >> $env:GITHUB_OUTPUT
@@ -115,6 +149,7 @@ jobs:
             out/windows-appcontrol-candidate-e2e.json
             out/*appcontrol*/**/*.json
             out/app-control-provisional-trust/**
+            out/historical-0.2.2-p0.4-onefile-runtime/onefile-runtime.json
             ${{ runner.temp }}/apl-appcontrol-candidate-e2e-*/logs/*.log
 
       - name: Upload candidate bundle, provisional policy and lifecycle evidence
