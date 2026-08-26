@@ -32,6 +32,8 @@ jobs:
             'tools/build_windows_appcontrol_static_runtime.ps1',
             'tools/build_windows_appcontrol_recovery.ps1',
             'tools/build_windows_appcontrol_installer.ps1',
+            'tools/windows_app_control_provisional_trust_pack.ps1',
+            'tools/windows_app_control_enterprise_trust_pack_v2.ps1',
             'tools/windows_app_control_enforced_readiness.ps1',
             'qa/windows_appcontrol_candidate_e2e.ps1'
           )) {
@@ -41,6 +43,7 @@ jobs:
           python -m unittest `
             tests.test_windows_app_control_post_incident_hardening `
             tests.test_windows_app_control_enterprise_candidate `
+            tests.test_windows_app_control_trust_pack_v2 `
             tests.test_portable_lifecycle_static_runtime `
             -v
 
@@ -72,16 +75,35 @@ jobs:
           $zip = Get-ChildItem -LiteralPath out -Filter '*-windows-x64-appcontrol-setup-bundle.zip' -File | Select-Object -First 1
           if (-not $zip) { throw 'App Control candidate ZIP is missing.' }
           "setup_path=$($setup.FullName)" >> $env:GITHUB_OUTPUT
+          "bundle_dir=$($bundle.FullName)" >> $env:GITHUB_OUTPUT
           "bundle_zip=$($zip.FullName)" >> $env:GITHUB_OUTPUT
           "bundle_name=$($zip.Name)" >> $env:GITHUB_OUTPUT
 
-      - name: Fresh repair migration uninstall lifecycle
+      - name: Fresh repair migration uninstall lifecycle and deterministic uninstaller
         shell: pwsh
         run: |
           ./qa/windows_appcontrol_candidate_e2e.ps1 `
             -CandidateSetup '${{ steps.candidate.outputs.setup_path }}' `
             -PredecessorSetup '${{ steps.predecessor.outputs.predecessor_setup_path }}' `
             -EvidencePath 'out\windows-appcontrol-candidate-e2e.json'
+
+      - name: Build rehearsal-only provisional App Control supplemental
+        id: provisional
+        shell: pwsh
+        run: |
+          ./tools/windows_app_control_provisional_trust_pack.ps1 `
+            -EnterpriseBundleDirectory '${{ steps.candidate.outputs.bundle_dir }}' `
+            -BasePolicyId 'DC1C604C-46EA-40B7-9F47-CF582B225D5E' `
+            -NormalLifecycleEvidencePath 'out\windows-appcontrol-candidate-e2e.json' `
+            -OutputDirectory 'out\app-control-provisional-trust'
+          $manifest = Get-Content 'out\app-control-provisional-trust\provisional-trust-pack.json' -Raw | ConvertFrom-Json
+          if ([bool]$manifest.enforced_lifecycle_ready) { throw 'Provisional policy illegally claims Enforced readiness.' }
+          if ([bool]$manifest.final_acceptance_evidence) { throw 'Provisional policy illegally claims final acceptance.' }
+          $cip = Join-Path 'out\app-control-provisional-trust' ([string]$manifest.supplemental_policy_cip)
+          if (-not (Test-Path -LiteralPath $cip -PathType Leaf)) { throw 'Provisional CIP is missing.' }
+          "manifest_path=$((Resolve-Path 'out\app-control-provisional-trust\provisional-trust-pack.json').Path)" >> $env:GITHUB_OUTPUT
+          "policy_id=$([string]$manifest.supplemental_policy_id)" >> $env:GITHUB_OUTPUT
+          "cip_path=$((Resolve-Path $cip).Path)" >> $env:GITHUB_OUTPUT
 
       - name: Upload failure diagnostics
         if: failure()
@@ -92,9 +114,10 @@ jobs:
           path: |
             out/windows-appcontrol-candidate-e2e.json
             out/*appcontrol*/**/*.json
+            out/app-control-provisional-trust/**
             ${{ runner.temp }}/apl-appcontrol-candidate-e2e-*/logs/*.log
 
-      - name: Upload candidate bundle and lifecycle evidence
+      - name: Upload candidate bundle, provisional policy and lifecycle evidence
         if: success()
         uses: actions/upload-artifact@v4
         with:
@@ -103,3 +126,4 @@ jobs:
             ${{ steps.candidate.outputs.bundle_zip }}
             out/windows-appcontrol-candidate-e2e.json
             out/*appcontrol*/**/*.json
+            out/app-control-provisional-trust/**
