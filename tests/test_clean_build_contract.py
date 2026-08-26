@@ -1,5 +1,3 @@
-import json
-import re
 import unittest
 from pathlib import Path
 
@@ -27,20 +25,10 @@ class CleanBuildContractTests(unittest.TestCase):
     def test_clean_build_windows_script_contract(self):
         self.assertTrue((ROOT / "tools" / "clean_build_windows.ps1").is_file())
         script = self.read("tools/clean_build_windows.ps1")
-
-        # Cleanup of build paths
-        self.assertIn(".build-venv", script)
-        self.assertIn("build", script)
-        self.assertIn("dist", script)
-        self.assertIn("out", script)
-        self.assertIn("artifact", script)
-
-        # Fresh isolated venv
+        for token in (".build-venv", "build", "dist", "out", "artifact"):
+            self.assertIn(token, script)
         self.assertIn("-m venv", script)
         self.assertIn("sys.prefix != sys.base_prefix", script)
-
-        # Toolchain installation. The online compatibility path remains version-pinned;
-        # the controlled release path can additionally enforce an offline hash-locked wheelhouse.
         self.assertIn("pip==26.1.2", script)
         self.assertNotIn("pip==25.3", script)
         self.assertIn("requirements-build.lock.txt", script)
@@ -48,16 +36,16 @@ class CleanBuildContractTests(unittest.TestCase):
         self.assertIn("--no-index", script)
         self.assertIn("--require-hashes", script)
         self.assertIn("pip check", script)
-
-        # Compilation & tests
         self.assertIn("py_compile", script)
         self.assertIn("unittest discover", script)
-
-        # PyInstaller build
         self.assertIn("PyInstaller", script)
-        self.assertIn('Arvectum Proxy Launcher.exe', script)
-
-        # Packaging & Checksums
+        self.assertIn("--onedir", script)
+        self.assertNotIn("--onefile", script)
+        self.assertIn("--contents-directory '.'", script)
+        self.assertIn("dist\\Arvectum Proxy Launcher", script)
+        self.assertIn("RUNTIME_SHA256SUMS.txt", script)
+        self.assertIn("runtime_tree_sha256", script)
+        self.assertIn("runtime_file_count", script)
         self.assertIn("SHA256SUMS.txt", script)
         self.assertIn("Compress-Archive", script)
         self.assertIn("Expand-Archive", script)
@@ -79,9 +67,11 @@ class CleanBuildContractTests(unittest.TestCase):
 
     def test_package_does_not_contain_runtime_state_or_secrets(self):
         script = self.read("tools/clean_build_windows.ps1")
-        # Expected files in package are explicit
-        self.assertIn('$ExpectedFiles = @("Arvectum Proxy Launcher.exe", "README.txt", "diagnose_app_control.ps1", "run_p01_native_qa_v2.ps1", "SHA256SUMS.txt")', script)
-        self.assertNotIn("proxy_settings.json", script.split("$ExpectedFiles")[1].split("foreach")[0])
+        self.assertIn("$ExpectedFiles = @('README.txt', 'diagnose_app_control.ps1', 'run_p01_native_qa_v2.ps1', 'SHA256SUMS.txt', 'RUNTIME_SHA256SUMS.txt')", script)
+        expected_section = script.split("$ExpectedFiles", 1)[1].split("foreach", 1)[0]
+        self.assertNotIn("proxy_settings.json", expected_section)
+        self.assertNotIn("no_proxy.txt", expected_section)
+        self.assertIn("runtime", script)
 
 
 if __name__ == "__main__":
