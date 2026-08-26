@@ -37,16 +37,39 @@ jobs:
       - name: Windows Documents execution smoke
         shell: pwsh
         run: |
+          $builtRuntime = (Resolve-Path -LiteralPath 'dist/Arvectum Proxy Launcher').Path
+          $builtExe = Join-Path $builtRuntime 'Arvectum Proxy Launcher.exe'
           $canonicalDir = Join-Path $env:USERPROFILE 'Documents\ArvectumProxyLauncher'
-          New-Item -ItemType Directory -Path $canonicalDir -Force | Out-Null
+          if (Test-Path -LiteralPath $canonicalDir) {
+            Remove-Item -LiteralPath $canonicalDir -Recurse -Force
+          }
+          Copy-Item -LiteralPath $builtRuntime -Destination $canonicalDir -Recurse -Force
           $canonicalExe = Join-Path $canonicalDir 'Arvectum Proxy Launcher.exe'
-          Copy-Item -LiteralPath 'dist/Arvectum Proxy Launcher.exe' -Destination $canonicalExe -Force
-          $builtHash = (Get-FileHash -LiteralPath 'dist/Arvectum Proxy Launcher.exe' -Algorithm SHA256).Hash
-          $canonicalHash = (Get-FileHash -LiteralPath $canonicalExe -Algorithm SHA256).Hash
-          if ($builtHash -ne $canonicalHash) { throw 'Canonical Documents copy hash mismatch' }
+          if (-not (Test-Path -LiteralPath $canonicalExe -PathType Leaf)) {
+            throw 'Canonical onedir runtime copy is missing the Launcher executable.'
+          }
+
+          $builtFiles = @(Get-ChildItem -LiteralPath $builtRuntime -File -Recurse -Force)
+          $canonicalFiles = @(Get-ChildItem -LiteralPath $canonicalDir -File -Recurse -Force)
+          if ($builtFiles.Count -ne $canonicalFiles.Count) {
+            throw "Canonical onedir file-count mismatch: built=$($builtFiles.Count) canonical=$($canonicalFiles.Count)"
+          }
+          foreach ($source in $builtFiles) {
+            $relative = [IO.Path]::GetRelativePath($builtRuntime, $source.FullName)
+            $target = Join-Path $canonicalDir $relative
+            if (-not (Test-Path -LiteralPath $target -PathType Leaf)) {
+              throw "Canonical onedir copy missing runtime file: $relative"
+            }
+            $sourceHash = (Get-FileHash -LiteralPath $source.FullName -Algorithm SHA256).Hash
+            $targetHash = (Get-FileHash -LiteralPath $target -Algorithm SHA256).Hash
+            if ($sourceHash -ne $targetHash) {
+              throw "Canonical onedir runtime hash mismatch: $relative"
+            }
+          }
+
           $p = Start-Process -FilePath $canonicalExe -ArgumentList '--status' -PassThru -Wait
           if ($p.ExitCode -ne 0) { throw "Documents EXE smoke failed with exit code $($p.ExitCode)" }
-          Write-Host "Documents execution smoke PASS; SHA256=$canonicalHash"
+          Write-Host "Documents onedir execution smoke PASS; files=$($canonicalFiles.Count)"
 
           $doctorReport = Join-Path $env:RUNNER_TEMP 'apl-diag-004-packaged-doctor.json'
           if (Test-Path -LiteralPath $doctorReport) { Remove-Item -LiteralPath $doctorReport -Force }
