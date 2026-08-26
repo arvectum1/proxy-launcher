@@ -8,6 +8,7 @@
     Gates:
       - fresh install;
       - repair after deleting one exact runtime DLL/PYD;
+      - generated Inno uninstaller EXE is byte-identical across fresh/repair/migration;
       - uninstall;
       - migration from the synthetic predecessor onefile layout;
       - final uninstall and legacy top-level payload retirement.
@@ -44,6 +45,10 @@ $result = [ordered]@{
     app_control_policy_changed = $false
     fresh_install = 'NOT_RUN'
     repair = 'NOT_RUN'
+    uninstaller_deterministic = 'NOT_RUN'
+    fresh_uninstaller_sha256 = ''
+    repaired_uninstaller_sha256 = ''
+    migrated_uninstaller_sha256 = ''
     fresh_uninstall = 'NOT_RUN'
     predecessor_install = 'NOT_RUN'
     migration = 'NOT_RUN'
@@ -52,6 +57,14 @@ $result = [ordered]@{
 
 function Hash([string]$Path) {
     (Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash.ToLowerInvariant()
+}
+
+function Resolve-Uninstaller([string]$Dir) {
+    $candidates = @(Get-ChildItem -LiteralPath $Dir -File -Filter 'unins*.exe' -ErrorAction SilentlyContinue)
+    if ($candidates.Count -ne 1) {
+        throw "Expected exactly one generated Inno uninstaller under $Dir; found $($candidates.Count)."
+    }
+    $candidates[0].FullName
 }
 
 function Invoke-Setup([string]$Setup, [string]$Dir, [string]$Log, [string]$Label) {
@@ -64,12 +77,7 @@ function Invoke-Setup([string]$Setup, [string]$Dir, [string]$Log, [string]$Label
 }
 
 function Invoke-Uninstall([string]$Dir, [string]$Log, [string]$Label) {
-    $uninstaller = Join-Path $Dir 'unins000.exe'
-    if (-not (Test-Path -LiteralPath $uninstaller -PathType Leaf)) {
-        $candidate = Get-ChildItem -LiteralPath $Dir -File -Filter 'unins*.exe' -ErrorAction SilentlyContinue | Select-Object -First 1
-        if ($candidate) { $uninstaller = $candidate.FullName }
-    }
-    if (-not (Test-Path -LiteralPath $uninstaller -PathType Leaf)) { throw "$Label uninstaller is missing." }
+    $uninstaller = Resolve-Uninstaller $Dir
     $p = Start-Process -FilePath $uninstaller -WorkingDirectory $Dir -ArgumentList @(
         '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART',"/LOG=$Log"
     ) -PassThru -Wait
@@ -106,6 +114,7 @@ function Read-CandidateInstall([string]$Dir) {
         runtime_dir = $runtimeDir
         entry = $entry
         owner = $owner
+        uninstaller = Resolve-Uninstaller $Dir
     }
 }
 
@@ -124,12 +133,12 @@ function Assert-NoLegacyTopLevelPayload([string]$Dir) {
     }
 }
 
-function Cleanup([string]$Dir, [string]$Name) {
+function Cleanup([string]$Dir) {
     try {
         if (Test-Path -LiteralPath $Dir -PathType Container) {
-            $u = Get-ChildItem -LiteralPath $Dir -File -Filter 'unins*.exe' -ErrorAction SilentlyContinue | Select-Object -First 1
-            if ($u) {
-                $p = Start-Process -FilePath $u.FullName -WorkingDirectory $Dir -ArgumentList @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART') -PassThru -Wait
+            $u = @(Get-ChildItem -LiteralPath $Dir -File -Filter 'unins*.exe' -ErrorAction SilentlyContinue | Select-Object -First 1)
+            if ($u.Count -eq 1) {
+                $p = Start-Process -FilePath $u[0].FullName -WorkingDirectory $Dir -ArgumentList @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART') -PassThru -Wait
             }
         }
     } catch { }
@@ -141,6 +150,7 @@ try {
     Invoke-Setup $CandidateSetup $freshRoot (Join-Path $logs 'fresh-install.log') 'fresh install'
     $fresh = Read-CandidateInstall $freshRoot
     Assert-NoLegacyTopLevelPayload $freshRoot
+    $result.fresh_uninstaller_sha256 = Hash $fresh.uninstaller
     $result.fresh_install = 'PASS'
 
     Write-Host '=== App Control candidate repair ==='
@@ -165,6 +175,10 @@ try {
     $repairedPath = Join-Path $repaired.runtime_dir ([string]$repairFile.relative_path)
     if (-not (Test-Path -LiteralPath $repairedPath -PathType Leaf)) { throw 'Repair did not restore the deleted runtime artifact.' }
     if ((Hash $repairedPath) -ne ([string]$repairFile.sha256).ToLowerInvariant()) { throw 'Repair restored wrong runtime bytes.' }
+    $result.repaired_uninstaller_sha256 = Hash $repaired.uninstaller
+    if ([string]$result.repaired_uninstaller_sha256 -ne [string]$result.fresh_uninstaller_sha256) {
+        throw 'Generated Inno uninstaller changed bytes during same-candidate repair; hash trust is not deterministic.'
+    }
     $result.repair = 'PASS'
 
     Write-Host '=== App Control candidate fresh uninstall ==='
@@ -183,6 +197,11 @@ try {
     Invoke-Setup $CandidateSetup $upgradeRoot (Join-Path $logs 'migration.log') 'candidate migration'
     $migrated = Read-CandidateInstall $upgradeRoot
     Assert-NoLegacyTopLevelPayload $upgradeRoot
+    $result.migrated_uninstaller_sha256 = Hash $migrated.uninstaller
+    if ([string]$result.migrated_uninstaller_sha256 -ne [string]$result.fresh_uninstaller_sha256) {
+        throw 'Generated Inno uninstaller differs between fresh and migrated installs; hash trust is not deterministic.'
+    }
+    $result.uninstaller_deterministic = 'PASS'
     $result.migration = 'PASS'
 
     Write-Host '=== Migrated candidate uninstall ==='
@@ -203,14 +222,15 @@ finally {
     if ($evidenceDir) { New-Item -ItemType Directory -Path $evidenceDir -Force | Out-Null }
     $result | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath $EvidencePath -Encoding UTF8
     if ($result.result -ne 'PASS') {
-        Cleanup $freshRoot 'fresh'
-        Cleanup $upgradeRoot 'upgrade'
+        Cleanup $freshRoot
+        Cleanup $upgradeRoot
     }
 }
 
 Write-Host 'APL-WIN-014 App Control candidate normal-Windows lifecycle: PASS'
 Write-Host 'Fresh install: PASS'
 Write-Host 'Repair injected runtime loss: PASS'
+Write-Host 'Generated Inno uninstaller deterministic hash: PASS'
 Write-Host 'Fresh uninstall: PASS'
 Write-Host 'Synthetic predecessor migration: PASS'
 Write-Host 'Migration uninstall: PASS'
