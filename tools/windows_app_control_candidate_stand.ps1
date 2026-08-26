@@ -416,13 +416,49 @@ function Invoke-NativeRecovery([object]$Inputs, [string]$BackupDirectory, [strin
     $evidence
 }
 
-function Assert-Sealed023CurrentHealthy {
-    if (-not (Test-Path -LiteralPath $Sealed023Exe -PathType Leaf) -or (Hash $Sealed023Exe) -ne $ExpectedSealed023AppSha256) { throw 'Exact sealed 0.2.3 is not installed at the governed current path.' }
-    $null = Resolve-Uninstaller
+function Resolve-Current023Healthy {
     foreach ($name in @('proxy_settings.json','no_proxy.txt')) {
-        if (-not (Test-Path -LiteralPath (Join-Path $StateRoot $name) -PathType Leaf)) { throw "Exact current durable state missing: $name" }
+        if (-not (Test-Path -LiteralPath (Join-Path $StateRoot $name) -PathType Leaf)) {
+            throw "Exact current durable state missing: $name"
+        }
     }
-    Wait-PacHealth $Sealed023Exe 10
+
+    $healthy = @()
+    foreach ($listener in @(Get-NetTCPConnection -LocalPort 8082 -State Listen -ErrorAction SilentlyContinue)) {
+        $owner = @(Get-CimInstance Win32_Process -Filter "ProcessId=$([int]$listener.OwningProcess)" -ErrorAction SilentlyContinue)
+        if ($owner.Count -ne 1 -or -not $owner[0].ExecutablePath) { continue }
+        $exe = [string]$owner[0].ExecutablePath
+        if (-not (Test-Path -LiteralPath $exe -PathType Leaf)) { continue }
+        if ((Hash $exe) -ne $ExpectedSealed023AppSha256) { continue }
+        $health = Get-PacHealth $exe
+        if ($health) {
+            $healthy += [pscustomobject]@{ exe=$exe; health=$health }
+        }
+    }
+
+    $healthy = @($healthy | Sort-Object -Property exe -Unique)
+    if ($healthy.Count -ne 1) {
+        throw "Expected exactly one healthy exact sealed 0.2.3 runtime owning PAC; found $($healthy.Count)."
+    }
+
+    $current = $healthy[0]
+    $mode = 'PORTABLE_RECOVERY'
+    $uninstaller = $null
+    if ([IO.Path]::GetFullPath([string]$current.exe) -ieq [IO.Path]::GetFullPath($Sealed023Exe)) {
+        $uninstallers = @(Get-ChildItem -LiteralPath $InstallRoot -File -Filter 'unins*.exe' -ErrorAction SilentlyContinue)
+        if ($uninstallers.Count -ne 1) {
+            throw "Installed exact sealed 0.2.3 must have exactly one Inno uninstaller; found $($uninstallers.Count)."
+        }
+        $mode = 'INSTALLED'
+        $uninstaller = $uninstallers[0].FullName
+    }
+
+    [pscustomobject]@{
+        mode = $mode
+        exe = [string]$current.exe
+        uninstaller = $uninstaller
+        health = $current.health
+    }
 }
 
 function Assert-CandidateInstalled([object]$Inputs) {
@@ -477,7 +513,8 @@ function Invoke-Preflight {
     $policy = Get-KnownPolicyState $hostInfo.citool $inputs $false
     $prepared = $null
     if ($policy.mode -eq 'AUDIT') { $prepared = Prepare-EnforcedBasePolicy }
-    $health = Assert-Sealed023CurrentHealthy
+    $current = Resolve-Current023Healthy
+    $health = $current.health
     $record = [ordered]@{
         schema='arvectum.proxy.apl-win-014-candidate-preflight.v1';task='APL-WIN-014';created_utc=[DateTime]::UtcNow.ToString('o');result='PASS'
         host=$env:COMPUTERNAME;version=[string]$kit.version;source_commit=[string]$kit.source_commit
@@ -489,13 +526,13 @@ function Invoke-Preflight {
         provisional_enforced_lifecycle_ready=[bool]$inputs.provisional.enforced_lifecycle_ready
         historical_onefile_native_members=[int]$inputs.provisional.historical_onefile_runtime_executable_count
         candidate_setup_sha256=Hash $inputs.setup;candidate_runtime_entry_sha256=[string]$inputs.runtime.entry_sha256
-        native_recovery_sha256=Hash $inputs.recovery_exe;current_sealed_023_sha256=Hash $Sealed023Exe
+        native_recovery_sha256=Hash $inputs.recovery_exe;current_sealed_023_sha256=Hash $current.exe;current_runtime_mode=[string]$current.mode;current_runtime_path=[string]$current.exe
         current_pac_http_status=[int]$health.http_status;current_auto_config_url=[string]$health.auto_config_url
         enforced_base_prepared=$(if($prepared){$true}else{$policy.mode -eq 'ENFORCED'});enforced_base_cip_sha256=$(if($prepared){$prepared.cip_sha256}else{$null})
         destructive_action_performed=$false;policy_update_performed=$false
     }
     Write-Json $record $PreflightEvidencePath 12
-    [pscustomobject]@{host=$hostInfo;kit=$kit;inputs=$inputs;policy=$policy;prepared=$prepared;health=$health}
+    [pscustomobject]@{host=$hostInfo;kit=$kit;inputs=$inputs;policy=$policy;prepared=$prepared;current=$current;health=$health}
 }
 
 function Ensure-ProvisionalActive([object]$Context) {
@@ -515,18 +552,31 @@ function Ensure-BaseEnforced([object]$Context) {
     Wait-PolicyState $Context.host.citool $Context.inputs 'ENFORCED' $true 20
 }
 
-function Remove-CurrentInstallAfterRollback {
-    Invoke-BoundedRollback $Sealed023Exe 20
-    $uninstaller = Resolve-Uninstaller
-    $p = Start-Process -FilePath $uninstaller -WorkingDirectory $InstallRoot -ArgumentList @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART',("/LOG=$(Join-Path $EvidenceRoot 'sealed-023-pre-lifecycle-uninstall.log')")) -PassThru -Wait
-    if ($p.ExitCode -ne 0) { throw "Sealed 0.2.3 uninstall failed with exit code $($p.ExitCode)." }
-    Stop-ExactProcesses $Sealed023Exe
+function Remove-Current023AfterRollback([object]$Current) {
+    if (-not $Current -or [string]$Current.mode -notin @('INSTALLED','PORTABLE_RECOVERY')) {
+        throw 'Current exact 0.2.3 state is missing or unsupported.'
+    }
+
+    Invoke-BoundedRollback ([string]$Current.exe) 20
+    Stop-ExactProcesses ([string]$Current.exe)
+
+    if ([string]$Current.mode -eq 'INSTALLED') {
+        $uninstaller = [string]$Current.uninstaller
+        if (-not $uninstaller -or -not (Test-Path -LiteralPath $uninstaller -PathType Leaf)) {
+            throw 'Installed exact sealed 0.2.3 uninstaller disappeared after preflight.'
+        }
+        $p = Start-Process -FilePath $uninstaller -WorkingDirectory $InstallRoot -ArgumentList @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART',("/LOG=$(Join-Path $EvidenceRoot 'sealed-023-pre-lifecycle-uninstall.log')")) -PassThru -Wait
+        if ($p.ExitCode -ne 0) { throw "Sealed 0.2.3 uninstall failed with exit code $($p.ExitCode)." }
+    }
+
     Remove-Item -LiteralPath $StateRoot -Recurse -Force -ErrorAction SilentlyContinue
-    if (Test-Path -LiteralPath $InstallRoot -PathType Container) {
+    if ([string]$Current.mode -eq 'INSTALLED' -and (Test-Path -LiteralPath $InstallRoot -PathType Container)) {
         $left = @(Get-ChildItem -LiteralPath $InstallRoot -Force -ErrorAction SilentlyContinue)
         if ($left.Count -eq 0) { Remove-Item -LiteralPath $InstallRoot -Force }
     }
-    if (@(Get-NetTCPConnection -LocalPort 8082 -State Listen -ErrorAction SilentlyContinue).Count -gt 0) { throw 'TCP 8082 is not free after sealed 0.2.3 rollback/uninstall.' }
+    if (@(Get-NetTCPConnection -LocalPort 8082 -State Listen -ErrorAction SilentlyContinue).Count -gt 0) {
+        throw 'TCP 8082 is not free after exact current 0.2.3 rollback/cleanup.'
+    }
 }
 
 function Install-Historical022UnderEnforced {
@@ -578,7 +628,7 @@ function Invoke-Execute {
 
         $ciStart = [DateTime]::UtcNow
         $destructiveStarted = $true
-        Remove-CurrentInstallAfterRollback
+        Remove-Current023AfterRollback $context.current
 
         Write-Host 'Installing exact immutable 0.2.2 P0.4 under Enforced...'
         $historicalInstalled = Install-Historical022UnderEnforced
@@ -741,7 +791,7 @@ if ($Mode -eq 'Preflight') {
     Write-Host "PROVISIONAL 0.2.4: $(if($preflight.policy.provisional.Count -eq 1){'ALREADY ACTIVE'}else{'READY / NOT DEPLOYED'})"
     Write-Host "HISTORICAL 0.2.2 ONEFILE NATIVE HASHES: $([int]$preflight.inputs.provisional.historical_onefile_runtime_executable_count) READY"
     Write-Host 'NATIVE RECOVERY: EXACT / READY / NOT RUN'
-    Write-Host 'CURRENT SEALED 0.2.3 + PAC: HEALTHY'
+    Write-Host "CURRENT EXACT 0.2.3 ($([string]$preflight.current.mode)) + PAC: HEALTHY"
     Write-Host 'NO APP CONTROL POLICY UPDATE PERFORMED'
     Write-Host 'NO DESTRUCTIVE ACTION PERFORMED'
     Write-Host "EVIDENCE: $PreflightEvidencePath"
