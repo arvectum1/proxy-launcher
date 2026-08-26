@@ -11,7 +11,7 @@ concurrency:
 
 jobs:
   build-fix:
-    runs-on: windows-latest
+    runs-on: windows-2022
     permissions:
       actions: read
       contents: read
@@ -68,7 +68,6 @@ jobs:
           $manifest | Add-Member -NotePropertyName installroot_recovery_state_patch_commit -NotePropertyValue '${{ github.event.pull_request.head.sha }}' -Force
           $manifest | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath $manifestPath -Encoding UTF8
 
-          # Re-verify every manifest-bound file after the narrow patch.
           foreach ($file in @($manifest.files)) {
             $path = Join-Path $kit ([string]$file.relative_path)
             if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { throw "Patched kit file missing: $($file.relative_path)" }
