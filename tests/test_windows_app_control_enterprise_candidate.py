@@ -86,6 +86,30 @@ class WindowsAppControlEnterpriseCandidateTests(unittest.TestCase):
         ):
             self.assertIn(expected, source)
 
+    def test_native_recovery_prearm_is_non_mutating_and_precedes_state_or_process_changes(self):
+        source = RECOVERY_SOURCE.read_text(encoding="utf-8")
+        for expected in (
+            '"verify-only"',
+            "if (verifyOnly)",
+            "APL-WIN-014 NATIVE RECOVERY PREARM: PASS",
+            "DURABLE BACKUP: PRESENT",
+            "EXACT STATIC RUNTIME: VERIFIED",
+            "NETWORK STATE: NOT CHANGED",
+            '"verify_only"',
+            '"changes_network_state"',
+        ):
+            self.assertIn(expected, source)
+        prearm = source.index("if (verifyOnly)")
+        state_mutation = source.index("Directory.CreateDirectory(stateRoot)")
+        process_start = source.index("ProcessStartInfo psi")
+        self.assertLess(prearm, state_mutation)
+        self.assertLess(prearm, process_start)
+        prearm_block = source[prearm:state_mutation]
+        self.assertNotIn("File.Copy(", prearm_block)
+        self.assertNotIn("Process.Start(", prearm_block)
+        self.assertIn("WriteEvidence", prearm_block)
+        self.assertIn("true", prearm_block)
+
     def test_static_runtime_remains_onedir_and_not_claimed_ready_too_early(self):
         text = STATIC_BUILD.read_text(encoding="utf-8")
         self.assertIn("--onedir", text)
