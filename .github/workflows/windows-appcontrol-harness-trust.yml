@@ -20,7 +20,7 @@ jobs:
         run: |
           $expected = [ordered]@{
             'tools\windows_app_control_candidate_runner.ps1' = '59e15aee05d9073d8afb38ad6e4cd40726942634601eeef561e9277a8cbced28'
-            'tools\windows_app_control_candidate_stand.ps1' = '4cc50bfb55bb5b1773c7a39468e11d53b2d87a05247b23babf40af33be529f1f'
+            'tools\windows_app_control_candidate_stand.ps1' = '7f2cc144a6d1309fc498bc26726bf753b51a8c85b2872bce1de7672eb0ce72dc'
             'tools\windows_app_control_enterprise_trust_pack_v2.ps1' = '2c64e65b82eeafec63d294b2759d88c9fac38f347360c499e3fdce48260482af'
             'tools\windows_app_control_enforced_readiness.ps1' = '23caa291fe7102cac97c17c0712f76f89a1d3d3ddeed175f12256deff3de68a6'
           }
@@ -102,8 +102,8 @@ jobs:
             final_acceptance_evidence = $false
             target_stand = 'ARVECTUM-DEMO'
             target_stand_kit_version = '0.2.4'
-            target_stand_kit_source_commit = 'ce9718ff460364020fd90cf7513b8f97728638fd'
-            target_stand_kit_zip_sha256 = '246b14064f3e32070a8498d4f7c848660f3c7f4dc0b61806346e9d3a8b03f116'
+            target_stand_kit_source_commit = '${{ github.event.pull_request.head.sha }}'
+            target_stand_kit_zip_sha256 = $null
             source_commit = '${{ github.event.pull_request.head.sha }}'
             base_policy_id = '{DC1C604C-46EA-40B7-9F47-CF582B225D5E}'
             supplemental_policy_id = [string]$trustManifest.supplemental_policy_id
