@@ -49,6 +49,18 @@ Compression=lzma2
 SolidCompression=yes
 UninstallLogging=yes
 
+[InstallDelete]
+; PrepareToInstall has already required the previous Launcher to complete its
+; network rollback. Only then retire exact known files from the sealed onefile
+; layout. Never recursively delete {app} during upgrade/repair.
+Type: files; Name: "{app}\Arvectum Proxy Launcher.exe"
+Type: files; Name: "{app}\Arvectum Proxy Launcher.exe.new"
+Type: files; Name: "{app}\Arvectum Proxy Launcher.exe.old"
+Type: files; Name: "{app}\Arvectum Proxy Launcher Repair.exe"
+Type: files; Name: "{app}\upgrade_helper.ps1"
+Type: files; Name: "{app}\uninstall_helper.ps1"
+Type: files; Name: "{app}\build_manifest.json"
+
 [Files]
 ; Static onedir runtime: every executable DLL/PYD is present before first launch.
 ; No product PowerShell helper and no product executable is extracted to {tmp}.
