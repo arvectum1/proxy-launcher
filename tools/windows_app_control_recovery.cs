@@ -22,6 +22,8 @@ internal static class Program
             string evidence = parsed.ContainsKey("evidence")
                 ? Path.GetFullPath(parsed["evidence"])
                 : Path.Combine(backup, "appcontrol-recovery-result.json");
+            bool verifyOnly = parsed.ContainsKey("verify-only") &&
+                String.Equals(parsed["verify-only"], "true", StringComparison.OrdinalIgnoreCase);
 
             if (expectedRuntimeSha256.Length != 64)
                 throw new ArgumentException("--expected-runtime-sha256 must contain a SHA256 hex digest.");
@@ -39,6 +41,18 @@ internal static class Program
             string actualRuntimeSha256 = Sha256(launcher);
             if (!String.Equals(actualRuntimeSha256, expectedRuntimeSha256, StringComparison.OrdinalIgnoreCase))
                 throw new InvalidOperationException("Static recovery runtime launcher SHA256 mismatch.");
+
+            if (verifyOnly)
+            {
+                WriteEvidence(evidence, "PASS", actualRuntimeSha256, 0, 0, String.Empty, null, true);
+                Console.WriteLine("APL-WIN-014 NATIVE RECOVERY PREARM: PASS");
+                Console.WriteLine("DURABLE BACKUP: PRESENT");
+                Console.WriteLine("EXACT STATIC RUNTIME: VERIFIED");
+                Console.WriteLine("NETWORK STATE: NOT CHANGED");
+                Console.WriteLine("APP CONTROL POLICY: NOT CHANGED");
+                Console.WriteLine("EVIDENCE: " + evidence);
+                return 0;
+            }
 
             string localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
             string stateRoot = Path.Combine(localAppData, "Arvectum", "ProxyLauncher");
@@ -73,7 +87,7 @@ internal static class Program
             }
 
             bool pass = ownerPid > 0 && status == 200 && String.Equals(autoConfigUrl, PacUrl, StringComparison.OrdinalIgnoreCase);
-            WriteEvidence(evidence, pass ? "PASS" : "BLOCK", actualRuntimeSha256, ownerPid, status, autoConfigUrl, null);
+            WriteEvidence(evidence, pass ? "PASS" : "BLOCK", actualRuntimeSha256, ownerPid, status, autoConfigUrl, null, false);
             if (!pass) throw new InvalidOperationException("Recovery runtime did not establish exact-process + PAC HTTP 200 + WinINET AutoConfigURL before timeout.");
 
             Console.WriteLine("APL-WIN-014 NATIVE RECOVERY: PASS");
@@ -90,7 +104,10 @@ internal static class Program
             {
                 Dictionary<string, string> parsed = ParseArgs(args);
                 if (parsed.ContainsKey("evidence"))
-                    WriteEvidence(Path.GetFullPath(parsed["evidence"]), "BLOCK", String.Empty, 0, 0, String.Empty, ex.Message);
+                {
+                    bool verifyOnly = parsed.ContainsKey("verify-only") && String.Equals(parsed["verify-only"], "true", StringComparison.OrdinalIgnoreCase);
+                    WriteEvidence(Path.GetFullPath(parsed["evidence"]), "BLOCK", String.Empty, 0, 0, String.Empty, ex.Message, verifyOnly);
+                }
             }
             catch { }
             Console.Error.WriteLine("APL-WIN-014 NATIVE RECOVERY: BLOCK");
@@ -185,7 +202,7 @@ internal static class Program
         return value.Replace("\\", "\\\\").Replace("\"", "\\\"").Replace("\r", "\\r").Replace("\n", "\\n");
     }
 
-    private static void WriteEvidence(string path, string result, string runtimeSha256, int ownerPid, int pacStatus, string autoConfigUrl, string error)
+    private static void WriteEvidence(string path, string result, string runtimeSha256, int ownerPid, int pacStatus, string autoConfigUrl, string error, bool verifyOnly)
     {
         string directory = Path.GetDirectoryName(Path.GetFullPath(path));
         if (!Directory.Exists(directory)) Directory.CreateDirectory(directory);
@@ -194,10 +211,12 @@ internal static class Program
             "\"task\":\"APL-WIN-014\"," +
             "\"result\":\"" + JsonEscape(result) + "\"," +
             "\"created_utc\":\"" + DateTime.UtcNow.ToString("o") + "\"," +
+            "\"verify_only\":" + (verifyOnly ? "true" : "false") + "," +
             "\"runtime_sha256\":\"" + JsonEscape(runtimeSha256) + "\"," +
             "\"listener_owner_pid\":" + ownerPid.ToString() + "," +
             "\"pac_http_status\":" + pacStatus.ToString() + "," +
             "\"auto_config_url\":\"" + JsonEscape(autoConfigUrl) + "\"," +
+            "\"changes_network_state\":" + (verifyOnly ? "false" : "true") + "," +
             "\"changes_app_control_policy\":false," +
             "\"error\":\"" + JsonEscape(error) + "\"" +
             "}";
