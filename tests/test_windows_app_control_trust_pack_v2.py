@@ -4,6 +4,7 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 PROVISIONAL = ROOT / "tools" / "windows_app_control_provisional_trust_pack.ps1"
+EXTRACTOR = ROOT / "tools" / "extract_pyinstaller_onefile_runtime.py"
 V2 = ROOT / "tools" / "windows_app_control_enterprise_trust_pack_v2.ps1"
 READINESS = ROOT / "tools" / "windows_app_control_enforced_readiness.ps1"
 
@@ -35,6 +36,32 @@ class WindowsAppControlTrustPackV2Tests(unittest.TestCase):
             "verifiedandreputablepolicystate",
         ):
             self.assertNotIn(forbidden, lowered)
+
+    def test_historical_022_onefile_native_runtime_is_admitted_without_execution(self):
+        provisional = PROVISIONAL.read_text(encoding="utf-8")
+        extractor = EXTRACTOR.read_text(encoding="utf-8")
+        for expected in (
+            "HistoricalPackageDirectory",
+            "HistoricalRuntimeDirectory",
+            "7ef02652e31bbbd68833be599135cf59519c42b1f8a8febb580b3891ffc35ec0",
+            "arvectum.proxy.pyinstaller-onefile-runtime-inventory.v1",
+            "historical_onefile_runtime_inventory_sha256",
+            "historical_onefile_runtime_executable_count",
+            "historical_onefile_runtime_executables",
+            "historical_onefile_input_executed_during_trust_build = $false",
+            "immutable 0.2.2 onefile native CArchive members are admitted without executing the input",
+        ):
+            self.assertIn(expected, provisional)
+        for expected in (
+            "CArchiveReader",
+            '"executed_input": False',
+            "archive.extract(name)",
+            "safe_member_path",
+            "executable_member_count",
+        ):
+            self.assertIn(expected, extractor)
+        self.assertNotIn("subprocess", extractor)
+        self.assertNotIn("Popen", extractor)
 
     def test_v2_requires_real_enforced_lifecycle_and_recovery_bound_to_provisional_bytes(self):
         text = V2.read_text(encoding="utf-8")
