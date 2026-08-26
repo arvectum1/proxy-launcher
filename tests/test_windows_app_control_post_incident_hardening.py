@@ -11,8 +11,8 @@ FINAL = ROOT / "tools" / "windows_app_control_local_gate_complete.ps1"
 class WindowsAppControlPostIncidentHardeningTests(unittest.TestCase):
     def test_static_runtime_builder_uses_onedir_not_onefile(self):
         text = STATIC_BUILD.read_text(encoding="utf-8")
-        self.assertIn("--onedir", text)
-        self.assertNotIn("--onefile", text)
+        self.assertIn("--onedir `", text)
+        self.assertNotIn("    --onefile `", text)
         self.assertIn("pyinstaller_onefile = $false", text)
         self.assertIn("packaging_layout = 'static-runtime'", text)
         self.assertIn("runtime_complete = $true", text)
