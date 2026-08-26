@@ -7,24 +7,30 @@
     satisfy final readiness. Only the post-rehearsal v2 promotion step may set
     enforced_lifecycle_ready=true.
 
-    The builder installs the exact candidate once on ordinary Windows to capture the
-    deterministic generated Inno uninstaller, scans Setup + static runtime + native
-    recovery + the reference installation at Hash level, creates a supplemental CIP
-    for the dedicated lab base, then uninstalls the reference copy.
+    The builder installs the exact static-runtime candidate once on ordinary Windows
+    to capture the deterministic generated Inno uninstaller. It also admits the exact
+    immutable historical 0.2.2 onefile outer EXE plus its OFFLINE-extracted native
+    PyInstaller CArchive members. This prevents the historical leg from repeating the
+    _MEI DLL/PYD denial discovered on ARVECTUM-DEMO.
 
-    This script never deploys/removes/changes App Control policy.
+    This script never deploys/removes/changes App Control policy and never executes the
+    historical onefile input while building trust evidence.
 #>
 [CmdletBinding()]
 param(
     [Parameter(Mandatory = $true)] [string]$EnterpriseBundleDirectory,
     [Parameter(Mandatory = $true)] [Guid]$BasePolicyId,
     [Parameter(Mandatory = $true)] [string]$NormalLifecycleEvidencePath,
+    [Parameter(Mandatory = $true)] [string]$HistoricalPackageDirectory,
+    [Parameter(Mandatory = $true)] [string]$HistoricalRuntimeDirectory,
     [string]$OutputDirectory = ''
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 if ($env:OS -ne 'Windows_NT') { throw 'Provisional App Control trust pack must be built on Windows.' }
+
+$ExpectedHistoricalAppSha256 = '7ef02652e31bbbd68833be599135cf59519c42b1f8a8febb580b3891ffc35ec0'
 
 function Resolve-Leaf([string]$Path, [string]$Label) {
     if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) { throw "$Label is missing: $Path" }
@@ -63,12 +69,15 @@ function Invoke-Uninstall([string]$Root, [string]$Log) {
 
 $EnterpriseBundleDirectory = Resolve-Directory $EnterpriseBundleDirectory 'enterprise bundle directory'
 $NormalLifecycleEvidencePath = Resolve-Leaf $NormalLifecycleEvidencePath 'normal-Windows lifecycle evidence'
+$HistoricalPackageDirectory = Resolve-Directory $HistoricalPackageDirectory 'historical package directory'
+$HistoricalRuntimeDirectory = Resolve-Directory $HistoricalRuntimeDirectory 'historical onefile runtime directory'
+
 $bundleManifestPath = Resolve-Leaf (Join-Path $EnterpriseBundleDirectory 'enterprise-bundle.json') 'enterprise bundle manifest'
 $bundle = Read-Json $bundleManifestPath 'enterprise bundle manifest'
 if ([string]$bundle.schema -ne 'arvectum.proxy.windows-app-control-enterprise-bundle.v1' -or [string]$bundle.result -ne 'PASS') {
     throw 'SAFETY BLOCK: unsupported/non-PASS enterprise bundle.'
 }
-if (-not [bool]$bundle.static_runtime -or [bool]$bundle.pyinstaller_onefile) { throw 'SAFETY BLOCK: provisional trust requires static runtime and prohibits onefile.' }
+if (-not [bool]$bundle.static_runtime -or [bool]$bundle.pyinstaller_onefile) { throw 'SAFETY BLOCK: provisional trust requires static runtime and prohibits current onefile.' }
 if ([string]$bundle.setup_loader -ne 'disabled' -or [bool]$bundle.setup_runs_from_temp) { throw 'SAFETY BLOCK: UseSetupLdr=no candidate is required.' }
 if (-not [bool]$bundle.native_recovery_included -or -not [bool]$bundle.rescue_runtime_included) { throw 'SAFETY BLOCK: native recovery/rescue runtime missing.' }
 
@@ -83,6 +92,27 @@ $expectedUninstallerHash = ([string]$normal.fresh_uninstaller_sha256).ToLowerInv
 if ($expectedUninstallerHash -notmatch '^[0-9a-f]{64}$') { throw 'SAFETY BLOCK: normal lifecycle has no valid deterministic uninstaller SHA256.' }
 foreach ($field in @('repaired_uninstaller_sha256','migrated_uninstaller_sha256')) {
     if (([string]$normal.$field).ToLowerInvariant() -ne $expectedUninstallerHash) { throw "SAFETY BLOCK: normal lifecycle uninstaller hash field $field differs." }
+}
+
+$historicalExe = Resolve-Leaf (Join-Path $HistoricalPackageDirectory 'Arvectum Proxy Launcher.exe') 'historical 0.2.2 launcher'
+if ((Hash $historicalExe) -ne $ExpectedHistoricalAppSha256) { throw 'SAFETY BLOCK: historical 0.2.2 outer EXE hash mismatch.' }
+foreach ($name in @('install.bat','install.ps1','uninstall.ps1','uninstall.bat','restore_network.bat')) {
+    $null = Resolve-Leaf (Join-Path $HistoricalPackageDirectory $name) "historical package $name"
+}
+$historicalRuntimeManifestPath = Resolve-Leaf (Join-Path $HistoricalRuntimeDirectory 'onefile-runtime.json') 'historical onefile runtime inventory'
+$historicalRuntime = Read-Json $historicalRuntimeManifestPath 'historical onefile runtime inventory'
+if ([string]$historicalRuntime.schema -ne 'arvectum.proxy.pyinstaller-onefile-runtime-inventory.v1' -or [string]$historicalRuntime.result -ne 'PASS') {
+    throw 'SAFETY BLOCK: historical onefile runtime inventory is unsupported/non-PASS.'
+}
+if ([bool]$historicalRuntime.executed_input) { throw 'SAFETY BLOCK: historical onefile extraction evidence claims the input was executed.' }
+if ([string]$historicalRuntime.input_sha256 -ne $ExpectedHistoricalAppSha256) { throw 'SAFETY BLOCK: historical onefile inventory targets another EXE.' }
+if ([int]$historicalRuntime.executable_member_count -lt 2) { throw 'SAFETY BLOCK: historical onefile native runtime inventory is unexpectedly empty.' }
+$historicalNative = @($historicalRuntime.members | Where-Object { [bool]$_.executable })
+if ($historicalNative.Count -ne [int]$historicalRuntime.executable_member_count) { throw 'SAFETY BLOCK: historical executable member count mismatch.' }
+foreach ($member in $historicalNative) {
+    $path = Join-Path $HistoricalRuntimeDirectory ([string]$member.relative_path)
+    $path = Resolve-Leaf $path "historical onefile native member $([string]$member.relative_path)"
+    if ((Hash $path) -ne ([string]$member.sha256).ToLowerInvariant()) { throw "SAFETY BLOCK: historical onefile native member hash mismatch: $path" }
 }
 
 $setupDir = Resolve-Directory (Join-Path $EnterpriseBundleDirectory 'setup') 'bundle setup directory'
@@ -137,6 +167,10 @@ try {
     Copy-Item -LiteralPath $rescueRoot -Destination (Join-Path $scanRoot 'rescue-runtime') -Recurse -Force
     Copy-Item -LiteralPath $recoveryExe -Destination (Join-Path $scanRoot 'Arvectum Proxy Launcher Recovery.exe') -Force
     Copy-Item -LiteralPath $referenceRoot -Destination (Join-Path $scanRoot 'reference-installed') -Recurse -Force
+    $historicalScan = Join-Path $scanRoot 'historical-0.2.2'
+    New-Item -ItemType Directory -Path $historicalScan -Force | Out-Null
+    Copy-Item -LiteralPath $historicalExe -Destination (Join-Path $historicalScan 'Arvectum Proxy Launcher.exe') -Force
+    Copy-Item -LiteralPath $HistoricalRuntimeDirectory -Destination (Join-Path $historicalScan 'onefile-runtime') -Recurse -Force
 
     $xml = Join-Path $OutputDirectory 'Arvectum-Proxy-Launcher-AppControl-Provisional.xml'
     New-CIPolicy -MultiplePolicyFormat -ScanPath $scanRoot -UserPEs -NoScript -NoShadowCopy -FilePath $xml -Level Hash | Out-Null
@@ -164,6 +198,17 @@ try {
             }
         }
     )
+    $historicalNativeEvidence = @(
+        $historicalNative | Sort-Object { [string]$_.relative_path } | ForEach-Object {
+            [ordered]@{
+                relative_path = [string]$_.relative_path
+                sha256 = ([string]$_.sha256).ToLowerInvariant()
+                size = [long]$_.size
+            }
+        }
+    )
+
+    Copy-Item -LiteralPath $historicalRuntimeManifestPath -Destination (Join-Path $OutputDirectory 'historical-onefile-runtime.json') -Force
 
     $manifest = [ordered]@{
         schema = 'arvectum.proxy.windows-app-control-provisional-trust-pack.v1'
@@ -192,6 +237,12 @@ try {
         native_recovery_sha256 = Hash $recoveryExe
         reference_uninstaller_sha256 = $referenceUninstallerHash
         reference_executables = $referenceExecutables
+        historical_package_version = '0.2.2-P0.4'
+        historical_outer_exe_sha256 = $ExpectedHistoricalAppSha256
+        historical_onefile_runtime_inventory_sha256 = Hash $historicalRuntimeManifestPath
+        historical_onefile_runtime_executable_count = $historicalNativeEvidence.Count
+        historical_onefile_runtime_executables = $historicalNativeEvidence
+        historical_onefile_input_executed_during_trust_build = $false
         normal_lifecycle_evidence_sha256 = Hash $NormalLifecycleEvidencePath
         normal_uninstaller_determinism = 'PASS'
         deployment_invariants = @(
@@ -200,16 +251,19 @@ try {
             'base policy remains authoritative',
             'supplemental contains no Enabled:Audit Mode',
             'exact-byte release-specific hash trust',
+            'immutable 0.2.2 onefile native CArchive members are admitted without executing the input',
             'final v2 readiness requires real Enforced lifecycle and native recovery rehearsal against this exact provisional policy'
         )
     }
     $manifestPath = Join-Path $OutputDirectory 'provisional-trust-pack.json'
-    $manifest | ConvertTo-Json -Depth 16 | Set-Content -LiteralPath $manifestPath -Encoding UTF8
+    $manifest | ConvertTo-Json -Depth 18 | Set-Content -LiteralPath $manifestPath -Encoding UTF8
 
     Write-Host 'APL-WIN-014 provisional App Control trust pack: PASS'
     Write-Host "Supplemental PolicyID: $policyId"
     Write-Host "CIP SHA256: $(Hash $cip)"
     Write-Host "Reference uninstaller SHA256: $referenceUninstallerHash"
+    Write-Host "Historical onefile native members trusted: $($historicalNativeEvidence.Count)"
+    Write-Host 'Historical onefile execution during trust build: NO'
     Write-Host 'Purpose: REHEARSAL ONLY'
     Write-Host 'Enforced lifecycle readiness: FALSE'
     Write-Host 'App Control policy mutation: NONE'
