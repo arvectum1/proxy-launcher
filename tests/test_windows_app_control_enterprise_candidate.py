@@ -95,8 +95,8 @@ class WindowsAppControlEnterpriseCandidateTests(unittest.TestCase):
             "DURABLE BACKUP: PRESENT",
             "EXACT STATIC RUNTIME: VERIFIED",
             "NETWORK STATE: NOT CHANGED",
-            '"verify_only"',
-            '"changes_network_state"',
+            "verify_only",
+            "changes_network_state",
         ):
             self.assertIn(expected, source)
         prearm = source.index("if (verifyOnly)")
