@@ -1,0 +1,133 @@
+name: Windows App Control harness trust
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: windows-appcontrol-harness-trust-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  harness-trust:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate exact candidate harness bytes are unchanged
+        shell: powershell
+        run: |
+          $expected = [ordered]@{
+            'tools\windows_app_control_candidate_runner.ps1' = '59e15aee05d9073d8afb38ad6e4cd40726942634601eeef561e9277a8cbced28'
+            'tools\windows_app_control_candidate_stand.ps1' = '4cc50bfb55bb5b1773c7a39468e11d53b2d87a05247b23babf40af33be529f1f'
+            'tools\windows_app_control_enterprise_trust_pack_v2.ps1' = '2c64e65b82eeafec63d294b2759d88c9fac38f347360c499e3fdce48260482af'
+            'tools\windows_app_control_enforced_readiness.ps1' = '23caa291fe7102cac97c17c0712f76f89a1d3d3ddeed175f12256deff3de68a6'
+          }
+          foreach ($entry in $expected.GetEnumerator()) {
+            if (-not (Test-Path -LiteralPath $entry.Key -PathType Leaf)) { throw "Missing exact stand-kit source: $($entry.Key)" }
+            $actual = (Get-FileHash -LiteralPath $entry.Key -Algorithm SHA256).Hash.ToLowerInvariant()
+            if ($actual -ne $entry.Value) { throw "Exact stand-kit harness bytes changed: $($entry.Key)`nExpected: $($entry.Value)`nActual:   $actual" }
+            Write-Host "Exact harness byte match: $($entry.Key) $actual"
+          }
+
+      - name: Validate bootstrap is ConstrainedLanguage-safe by construction
+        shell: powershell
+        run: |
+          $scripts = @(
+            'tools\windows_app_control_candidate_harness_bootstrap.ps1',
+            'tools\windows_app_control_candidate_harness_trust.ps1'
+          )
+          foreach ($script in $scripts) {
+            $tokens = $null
+            $errors = $null
+            $ast = [System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path $script).Path,[ref]$tokens,[ref]$errors)
+            if ($errors.Count -gt 0) { throw "PowerShell parse errors in $script`: $($errors | Out-String)" }
+            Write-Host "PowerShell syntax PASS: $script"
+            if ($script -like '*bootstrap.ps1') {
+              $methodCalls = @($ast.FindAll({ param($node) $node -is [System.Management.Automation.Language.InvokeMemberExpressionAst] },$true))
+              if ($methodCalls.Count -ne 0) {
+                throw "Bootstrap contains prohibited method invocation(s): $($methodCalls.Extent.Text -join '; ')"
+              }
+              $source = Get-Content -LiteralPath $script -Raw
+              if ($source -match '::') { throw 'Bootstrap contains prohibited static .NET member syntax (::).' }
+              if ($source -match '\b(New-Object|Add-Type|Invoke-Expression)\b') { throw 'Bootstrap contains a prohibited high-risk ConstrainedLanguage construct.' }
+              Write-Host 'Bootstrap static ConstrainedLanguage contract: PASS'
+            }
+          }
+
+      - name: Build exact lab-only harness supplemental
+        id: build
+        shell: powershell
+        run: |
+          $output = Join-Path $PWD 'out\apl-win-014-harness-trust'
+          .\tools\windows_app_control_candidate_harness_trust.ps1 `
+            -BasePolicyId 'DC1C604C-46EA-40B7-9F47-CF582B225D5E' `
+            -OutputDirectory $output
+
+          $manifestPath = Join-Path $output 'harness-trust.json'
+          if (-not (Test-Path -LiteralPath $manifestPath -PathType Leaf)) { throw 'Harness trust manifest missing.' }
+          $manifest = Get-Content -LiteralPath $manifestPath -Raw -Encoding UTF8 | ConvertFrom-Json
+          if ([string]$manifest.result -ne 'PASS') { throw 'Harness trust build is not PASS.' }
+          if ([string]$manifest.purpose -ne 'lab-harness-only') { throw 'Harness policy is not lab-harness-only.' }
+          if ([bool]$manifest.product_trust -or [bool]$manifest.final_acceptance_evidence) { throw 'Harness policy illegally claims product/final trust.' }
+          if (-not [bool]$manifest.script_scan_enabled -or [bool]$manifest.no_script_option_used) { throw 'Harness policy did not use script scanning.' }
+          if ([int]$manifest.trusted_script_count -ne 4) { throw 'Harness policy must trust exactly four scripts.' }
+          if (([string]$manifest.base_policy_id).Trim('{}') -ine 'DC1C604C-46EA-40B7-9F47-CF582B225D5E') { throw 'Harness policy targets another base.' }
+          $cip = Join-Path $output ([string]$manifest.supplemental_policy_cip)
+          $actualCip = (Get-FileHash -LiteralPath $cip -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($actualCip -ne ([string]$manifest.supplemental_policy_cip_sha256).ToLowerInvariant()) { throw 'Harness CIP hash mismatch.' }
+          "output=$output" >> $env:GITHUB_OUTPUT
+          "policy_id=$([string]$manifest.supplemental_policy_id)" >> $env:GITHUB_OUTPUT
+          "cip_sha256=$actualCip" >> $env:GITHUB_OUTPUT
+
+      - name: Assemble drop-in ARVECTUM-DEMO harness fix
+        id: delivery
+        shell: powershell
+        run: |
+          $root = Join-Path $PWD 'out\APL-WIN-014-0.2.4-HARNESS-FIX'
+          $trust = Join-Path $root 'harness-trust'
+          Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory -Path $trust -Force | Out-Null
+          Copy-Item -Path (Join-Path '${{ steps.build.outputs.output }}' '*') -Destination $trust -Force
+          Copy-Item -LiteralPath 'tools\windows_app_control_candidate_harness_bootstrap.ps1' -Destination (Join-Path $root 'APL-WIN-014-HARNESS-BOOTSTRAP.ps1') -Force
+
+          $trustManifest = Get-Content -LiteralPath (Join-Path $trust 'harness-trust.json') -Raw -Encoding UTF8 | ConvertFrom-Json
+          $deliveryManifest = [ordered]@{
+            schema = 'arvectum.proxy.apl-win-014-harness-fix.v1'
+            task = 'APL-WIN-014'
+            result = 'PASS'
+            purpose = 'restore FullLanguage only for exact lab acceptance scripts under existing Enforced App Control'
+            product_trust = $false
+            final_acceptance_evidence = $false
+            target_stand = 'ARVECTUM-DEMO'
+            target_stand_kit_version = '0.2.4'
+            target_stand_kit_source_commit = 'ce9718ff460364020fd90cf7513b8f97728638fd'
+            target_stand_kit_zip_sha256 = '246b14064f3e32070a8498d4f7c848660f3c7f4dc0b61806346e9d3a8b03f116'
+            source_commit = '${{ github.event.pull_request.head.sha }}'
+            base_policy_id = '{DC1C604C-46EA-40B7-9F47-CF582B225D5E}'
+            supplemental_policy_id = [string]$trustManifest.supplemental_policy_id
+            supplemental_policy_cip_sha256 = [string]$trustManifest.supplemental_policy_cip_sha256
+            bootstrap_sha256 = (Get-FileHash -LiteralPath (Join-Path $root 'APL-WIN-014-HARNESS-BOOTSTRAP.ps1') -Algorithm SHA256).Hash.ToLowerInvariant()
+            trusted_scripts = @($trustManifest.trusted_scripts)
+            preflight_policy_mutation = 'NONE'
+            deploy_policy_mutation = 'ADD EXACT LAB HARNESS SUPPLEMENTAL ONLY'
+          }
+          $deliveryManifest | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath (Join-Path $root 'harness-fix.json') -Encoding UTF8
+
+          $zip = "$root.zip"
+          Remove-Item -LiteralPath $zip -Force -ErrorAction SilentlyContinue
+          Compress-Archive -Path (Join-Path $root '*') -DestinationPath $zip -Force
+          $zipSha = (Get-FileHash -LiteralPath $zip -Algorithm SHA256).Hash.ToLowerInvariant()
+          Write-Host "Harness fix ZIP: $zip"
+          Write-Host "Harness fix ZIP SHA256: $zipSha"
+          "zip=$zip" >> $env:GITHUB_OUTPUT
+          "zip_sha256=$zipSha" >> $env:GITHUB_OUTPUT
+
+      - name: Upload ARVECTUM-DEMO harness fix
+        uses: actions/upload-artifact@v4
+        with:
+          name: APL-WIN-014-0.2.4-HARNESS-FIX
+          path: |
+            ${{ steps.delivery.outputs.zip }}
+            out/APL-WIN-014-0.2.4-HARNESS-FIX/**
