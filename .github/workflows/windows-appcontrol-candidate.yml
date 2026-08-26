@@ -35,6 +35,8 @@ jobs:
             'tools/windows_app_control_provisional_trust_pack.ps1',
             'tools/windows_app_control_enterprise_trust_pack_v2.ps1',
             'tools/windows_app_control_enforced_readiness.ps1',
+            'tools/windows_app_control_candidate_stand.ps1',
+            'tools/windows_app_control_candidate_runner.ps1',
             'qa/windows_appcontrol_candidate_e2e.ps1'
           )) {
             [void][scriptblock]::Create((Get-Content -LiteralPath $script -Raw))
@@ -45,6 +47,7 @@ jobs:
             tests.test_windows_app_control_post_incident_hardening `
             tests.test_windows_app_control_enterprise_candidate `
             tests.test_windows_app_control_trust_pack_v2 `
+            tests.test_windows_app_control_candidate_runner `
             tests.test_portable_lifecycle_static_runtime `
             -v
 
@@ -139,6 +142,75 @@ jobs:
           "policy_id=$([string]$manifest.supplemental_policy_id)" >> $env:GITHUB_OUTPUT
           "cip_path=$((Resolve-Path $cip).Path)" >> $env:GITHUB_OUTPUT
 
+      - name: Assemble self-contained ARVECTUM-DEMO stand kit
+        id: standkit
+        shell: pwsh
+        run: |
+          $kit = Join-Path $PWD 'out\APL-WIN-014-0.2.4-stand-kit'
+          Remove-Item -LiteralPath $kit -Recurse -Force -ErrorAction SilentlyContinue
+          foreach ($dir in @('candidate','provisional','historical-0.2.2-p0.4','evidence','kit-tools')) {
+            New-Item -ItemType Directory -Path (Join-Path $kit $dir) -Force | Out-Null
+          }
+
+          Copy-Item -Path (Join-Path '${{ steps.candidate.outputs.bundle_dir }}' '*') -Destination (Join-Path $kit 'candidate') -Recurse -Force
+          Copy-Item -Path (Join-Path (Resolve-Path 'out\app-control-provisional-trust').Path '*') -Destination (Join-Path $kit 'provisional') -Recurse -Force
+          Copy-Item -Path (Join-Path '${{ steps.historical.outputs.package_dir }}' '*') -Destination (Join-Path $kit 'historical-0.2.2-p0.4') -Recurse -Force
+          Copy-Item -LiteralPath 'out\windows-appcontrol-candidate-e2e.json' -Destination (Join-Path $kit 'evidence\windows-appcontrol-candidate-e2e.json') -Force
+          Copy-Item -LiteralPath 'tools\windows_app_control_candidate_stand.ps1' -Destination (Join-Path $kit 'APL-WIN-014-STAND.ps1') -Force
+          Copy-Item -LiteralPath 'tools\windows_app_control_candidate_runner.ps1' -Destination (Join-Path $kit 'APL-WIN-014.ps1') -Force
+          Copy-Item -LiteralPath 'tools\windows_app_control_enterprise_trust_pack_v2.ps1' -Destination (Join-Path $kit 'kit-tools\windows_app_control_enterprise_trust_pack_v2.ps1') -Force
+          Copy-Item -LiteralPath 'tools\windows_app_control_enforced_readiness.ps1' -Destination (Join-Path $kit 'kit-tools\windows_app_control_enforced_readiness.ps1') -Force
+
+          $files = @(
+            Get-ChildItem -LiteralPath $kit -File -Recurse -Force |
+              Sort-Object FullName |
+              ForEach-Object {
+                $relative = $_.FullName.Substring($kit.Length).TrimStart('\').Replace('\','/')
+                [ordered]@{
+                  relative_path = $relative
+                  size = [long]$_.Length
+                  sha256 = (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+                }
+              }
+          )
+          $sourceCommit = if ('${{ github.event_name }}' -eq 'pull_request') { '${{ github.event.pull_request.head.sha }}' } else { '${{ github.sha }}' }
+          $manifest = [ordered]@{
+            schema = 'arvectum.proxy.apl-win-014-stand-kit.v1'
+            task = 'APL-WIN-014'
+            created_utc = [DateTime]::UtcNow.ToString('o')
+            result = 'PASS'
+            version = '0.2.4'
+            source_commit = $sourceCommit
+            build_checkout_commit = (git rev-parse HEAD).Trim()
+            candidate_label = '0.2.4-appcontrol-candidate'
+            promoted_release = $false
+            preflight_is_non_destructive = $true
+            execute_requires_separate_owner_action = $true
+            base_policy_id = '{DC1C604C-46EA-40B7-9F47-CF582B225D5E}'
+            files = $files
+          }
+          $manifestPath = Join-Path $kit 'stand-kit.json'
+          $manifest | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $manifestPath -Encoding UTF8
+
+          # Verify the manifest against the completed kit before zipping it.
+          foreach ($file in @($manifest.files)) {
+            $path = Join-Path $kit ([string]$file.relative_path)
+            if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { throw "Stand-kit file missing after assembly: $($file.relative_path)" }
+            if ([long](Get-Item -LiteralPath $path).Length -ne [long]$file.size) { throw "Stand-kit size mismatch: $($file.relative_path)" }
+            $sha = (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash.ToLowerInvariant()
+            if ($sha -ne [string]$file.sha256) { throw "Stand-kit SHA256 mismatch: $($file.relative_path)" }
+          }
+
+          $zip = "$kit.zip"
+          Remove-Item -LiteralPath $zip -Force -ErrorAction SilentlyContinue
+          Compress-Archive -Path (Join-Path $kit '*') -DestinationPath $zip -Force
+          $zipSha = (Get-FileHash -LiteralPath $zip -Algorithm SHA256).Hash.ToLowerInvariant()
+          Write-Host "Stand kit: $zip"
+          Write-Host "Stand kit SHA256: $zipSha"
+          "zip_path=$zip" >> $env:GITHUB_OUTPUT
+          "zip_sha256=$zipSha" >> $env:GITHUB_OUTPUT
+          "artifact_name=APL-WIN-014-0.2.4-stand-kit" >> $env:GITHUB_OUTPUT
+
       - name: Upload failure diagnostics
         if: failure()
         uses: actions/upload-artifact@v4
@@ -162,3 +234,10 @@ jobs:
             out/windows-appcontrol-candidate-e2e.json
             out/*appcontrol*/**/*.json
             out/app-control-provisional-trust/**
+
+      - name: Upload self-contained ARVECTUM-DEMO stand kit
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.standkit.outputs.artifact_name }}
+          path: ${{ steps.standkit.outputs.zip_path }}
