@@ -16,8 +16,11 @@ class WindowsAppControlEnterpriseCandidateTests(unittest.TestCase):
         self.assertIn("UseSetupLdr=no", text)
         self.assertIn("Static onedir runtime", text)
         self.assertIn("No product PowerShell helper", text)
-        self.assertNotIn("upgrade_helper.ps1", text)
-        self.assertNotIn("uninstall_helper.ps1", text)
+        # Legacy helper names may appear only as exact [InstallDelete] cleanup
+        # targets after rollback; they must never be packaged or executed.
+        self.assertNotIn('Source: "{#PayloadDir}\\upgrade_helper.ps1"', text)
+        self.assertNotIn('Source: "{#PayloadDir}\\uninstall_helper.ps1"', text)
+        self.assertNotIn("RunEmbeddedHelper", text)
         self.assertNotIn("powershell.exe", text.lower())
         self.assertNotIn('DestDir: "{tmp}"', text)
         self.assertNotIn("ExtractTemporaryFile", text)
