@@ -80,7 +80,7 @@ begin
     exit;
   end;
 
-  ; Migration path from sealed 0.2.3 layout.
+  // Migration path from sealed 0.2.3 layout.
   Candidate := ExpandConstant('{app}\Arvectum Proxy Launcher.exe');
   if FileExists(Candidate) then begin
     Result := Candidate;
@@ -160,8 +160,10 @@ begin
     if (ExitCode <> 0) or Output.Error then
       exit;
     Text := '';
-    for I := 0 to GetArrayLength(Output.StdOut) - 1 do
-      Text := Text + Output.StdOut[I] + #10;
+    if GetArrayLength(Output.StdOut) > 0 then begin
+      for I := 0 to GetArrayLength(Output.StdOut) - 1 do
+        Text := Text + Output.StdOut[I] + #10;
+    end;
     Text := Lowercase(Text);
     Result := (Pos('arvectum proxy launcher.exe', Text) > 0) and (Pos('--start', Text) > 0);
   except
