@@ -16,10 +16,15 @@ internal static class Program
         try
         {
             Dictionary<string, string> parsed = ParseArgs(args);
-            string backup = Require(parsed, "backup");
-            string runtime = Require(parsed, "runtime");
+            string backup = Path.GetFullPath(Require(parsed, "backup"));
+            string runtime = Path.GetFullPath(Require(parsed, "runtime"));
             string expectedRuntimeSha256 = Require(parsed, "expected-runtime-sha256").ToLowerInvariant();
-            string evidence = parsed.ContainsKey("evidence") ? parsed["evidence"] : Path.Combine(backup, "appcontrol-recovery-result.json");
+            string evidence = parsed.ContainsKey("evidence")
+                ? Path.GetFullPath(parsed["evidence"])
+                : Path.Combine(backup, "appcontrol-recovery-result.json");
+
+            if (expectedRuntimeSha256.Length != 64)
+                throw new ArgumentException("--expected-runtime-sha256 must contain a SHA256 hex digest.");
 
             string durable = Directory.Exists(Path.Combine(backup, "durable-state"))
                 ? Path.Combine(backup, "durable-state")
@@ -85,7 +90,7 @@ internal static class Program
             {
                 Dictionary<string, string> parsed = ParseArgs(args);
                 if (parsed.ContainsKey("evidence"))
-                    WriteEvidence(parsed["evidence"], "BLOCK", String.Empty, 0, 0, String.Empty, ex.Message);
+                    WriteEvidence(Path.GetFullPath(parsed["evidence"]), "BLOCK", String.Empty, 0, 0, String.Empty, ex.Message);
             }
             catch { }
             Console.Error.WriteLine("APL-WIN-014 NATIVE RECOVERY: BLOCK");
@@ -109,8 +114,9 @@ internal static class Program
 
     private static string Require(Dictionary<string, string> args, string key)
     {
-        if (!args.ContainsKey(key) || String.IsNullOrWhiteSpace(args[key])) throw new ArgumentException("Missing --" + key + ".");
-        return Path.GetFullPath(args[key]) == args[key] || key == "expected-runtime-sha256" ? args[key] : args[key];
+        if (!args.ContainsKey(key) || String.IsNullOrWhiteSpace(args[key]))
+            throw new ArgumentException("Missing --" + key + ".");
+        return args[key];
     }
 
     private static string Sha256(string path)
