@@ -66,7 +66,8 @@ try {
     }
 
     if ($trustedScripts.Count -ne 4) { throw 'Exactly four acceptance scripts must be trusted.' }
-    if (@($trustedScripts | Select-Object -ExpandProperty sha256 -Unique).Count -ne 4) { throw 'Harness trust inputs unexpectedly contain duplicate bytes.' }
+    $uniqueHashes = @($trustedScripts | ForEach-Object { [string]$_['sha256'] } | Select-Object -Unique)
+    if ($uniqueHashes.Count -ne 4) { throw 'Harness trust inputs unexpectedly contain duplicate bytes.' }
 
     $xml = Join-Path $OutputDirectory 'Arvectum-APL-WIN-014-Lab-Harness-Trust.xml'
 
