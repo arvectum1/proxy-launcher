@@ -64,19 +64,19 @@ if ($Mode -eq 'Recover') {
     } else {
         & $StandDriver -Mode Recover
     }
-    exit $LASTEXITCODE
+    return
 }
 
 if ($Mode -eq 'Preflight') {
     & $StandDriver -Mode Preflight
-    exit $LASTEXITCODE
+    return
 }
 
 # Execute is the only path that can reach the destructive guarded driver. The
 # stand driver owns all policy updates, native recovery PREARM, lifecycle safety,
-# emergency recovery, and final healthy product restoration.
+# emergency recovery, and final healthy product restoration. The driver throws
+# or exits on failure; a normal return is followed by evidence validation below.
 & $StandDriver -Mode Execute
-if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
 $driver = Read-Json $DriverResult 'guarded stand result'
 if ([string]$driver.schema -ne 'arvectum.proxy.apl-win-014-candidate-result.v1' -or [string]$driver.result -ne 'PASS') {
@@ -110,11 +110,12 @@ if (Test-Path -LiteralPath $FinalTrustRoot) {
         -EnforcedLifecycleEvidencePath $EnforcedEvidence `
         -RecoveryRehearsalEvidencePath $RecoveryEvidence `
         -OutputDirectory $FinalTrustRoot
-    if ($LASTEXITCODE -ne 0) { throw "FINALIZATION BLOCK: trust-pack v2 promotion failed with exit code $LASTEXITCODE." }
 }
 
+# These are PowerShell scripts, not native executables. Their failure contract is
+# terminating exceptions under ErrorActionPreference=Stop; LASTEXITCODE is
+# intentionally not consulted because it can retain an unrelated native exit code.
 & $ReadinessScript -TrustPackDirectory $FinalTrustRoot -ExpectedBasePolicyId $BasePolicyId
-if ($LASTEXITCODE -ne 0) { throw "FINALIZATION BLOCK: final readiness barrier failed with exit code $LASTEXITCODE." }
 
 $trustManifest = Join-Path $FinalTrustRoot 'trust-pack.json'
 $trust = Read-Json $trustManifest 'final trust-pack v2 manifest'
