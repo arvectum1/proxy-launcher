@@ -1,0 +1,13 @@
+{
+  "Policies": [
+    {
+      "policy_id": "dc1c604c-46ea-40b7-9f47-cf582b225d5e",
+      "base_policy_id": "dc1c604c-46ea-40b7-9f47-cf582b225d5e",
+      "friendly_name": "Arvectum APL-WIN-014 Lab Base",
+      "is_on_disk": true,
+      "is_enforced": true,
+      "is_authorized": true
+    }
+  ],
+  "OperationResult": 0
+}
