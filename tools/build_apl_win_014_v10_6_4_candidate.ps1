@@ -44,16 +44,14 @@ $portableResult = Get-Content -LiteralPath $buildResult -Raw | ConvertFrom-Json
 if ([string]$portableResult.source_commit -cne $head) { throw 'Portable build-result source commit mismatch.' }
 if ([string]$portableResult.exe_sha256 -cne $frozenApplication.sha256) { throw 'Portable build-result application hash mismatch.' }
 
-$installerArgs = @(
-    '-UseExistingPayload',
-    '-ApplicationExe', $app,
-    '-PortableZip', $portable,
-    '-BuildResultPath', $buildResult,
-    '-ExpectedApplicationSha256', $frozenApplication.sha256
-)
-if ($IsccPath) { $installerArgs += @('-IsccPath', $IsccPath) }
-
-& (Join-Path $root 'tools\build_windows_installer.ps1') @installerArgs -SyntheticPredecessor
+& (Join-Path $root 'tools\build_windows_installer.ps1') `
+    -UseExistingPayload `
+    -ApplicationExe $app `
+    -PortableZip $portable `
+    -BuildResultPath $buildResult `
+    -ExpectedApplicationSha256 $frozenApplication.sha256 `
+    -IsccPath $IsccPath `
+    -SyntheticPredecessor
 if ($LASTEXITCODE -ne 0) { throw 'Synthetic predecessor setup compilation failed.' }
 $predecessor = Join-Path $root "out\installer\Arvectum-Proxy-Launcher-$($version -replace '\.3$','.2')-windows-x64-setup-synthetic-predecessor.exe"
 if (-not (Test-Path -LiteralPath $predecessor -PathType Leaf)) {
@@ -61,7 +59,13 @@ if (-not (Test-Path -LiteralPath $predecessor -PathType Leaf)) {
 }
 if (-not $predecessor) { throw 'Synthetic predecessor setup was not produced.' }
 
-& (Join-Path $root 'tools\build_windows_installer.ps1') @installerArgs
+& (Join-Path $root 'tools\build_windows_installer.ps1') `
+    -UseExistingPayload `
+    -ApplicationExe $app `
+    -PortableZip $portable `
+    -BuildResultPath $buildResult `
+    -ExpectedApplicationSha256 $frozenApplication.sha256 `
+    -IsccPath $IsccPath
 if ($LASTEXITCODE -ne 0) { throw 'Current setup compilation failed.' }
 $setup = Join-Path $root "out\installer\Arvectum-Proxy-Launcher-$version-windows-x64-setup.exe"
 $installerManifest = Join-Path $root 'out\installer-payload\build_manifest.json'
