@@ -50,6 +50,8 @@ class WindowsV1064WorkflowContractTests(unittest.TestCase):
             'manifest_application_equals_application = $true',
             'github_run_id = $runId',
             'github_run_attempt = $attempt',
+            'WaitForExit(30000)',
+            'Setup /HELP exceeded the 30-second non-interactive timeout.',
         ):
             self.assertIn(token, script)
 
