@@ -150,7 +150,8 @@ class CanonicalCoreCompositionTests(unittest.TestCase):
         self.assertEqual(_legacy_module_import_consumers(), set())
 
     def test_core_retains_exact_precomposition_state_contract(self):
-        self.assertEqual(core.APP_VERSION, "0.2.3")
+        expected_version = (ROOT / "VERSION").read_text(encoding="utf-8-sig").strip()
+        self.assertEqual(core.APP_VERSION, expected_version)
         self.assertEqual(core.ENGINEERING_MILESTONE, "P0.2")
         self.assertEqual(core._INSTALL_OWNER_MARKER, ".arvectum-install-owner")
         self.assertEqual(core._INSTALL_OWNER_VALUE, "ARVECTUM_PROXY_LAUNCHER_INSTALL_OWNER")

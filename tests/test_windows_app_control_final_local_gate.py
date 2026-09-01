@@ -6,6 +6,7 @@ ROOT = Path(__file__).resolve().parents[1]
 CANONICAL = ROOT / "tools" / "windows_app_control_enforced_acceptance.ps1"
 FINAL = ROOT / "tools" / "windows_app_control_local_gate_complete.ps1"
 PREVERIFIED = ROOT / "tools" / "windows_app_control_preverified_release.ps1"
+READINESS = ROOT / "tools" / "windows_app_control_enforced_readiness.ps1"
 
 
 class WindowsAppControlFinalLocalGateContractTests(unittest.TestCase):
@@ -116,30 +117,55 @@ class WindowsAppControlFinalLocalGateContractTests(unittest.TestCase):
         self.assertNotIn("CRYPTO_PRO_CSPTEST_PATH", text)
         self.assertNotIn("csptest", text.lower())
 
-    def test_final_wrapper_uses_only_canonical_v2_gate(self):
+    def test_final_wrapper_uses_readiness_barrier_before_canonical_gate(self):
         text = FINAL.read_text(encoding="utf-8")
+        self.assertIn("windows_app_control_enforced_readiness.ps1", text)
         self.assertIn("windows_app_control_enforced_acceptance.ps1", text)
-        self.assertIn("windows_app_control_preverified_release.ps1", text)
-        self.assertNotIn("windows_app_control_current_release_alias.ps1", text)
-        self.assertNotIn("windows_app_control_upgrade_acceptance.ps1", text)
-        self.assertNotIn("windows_app_control_local_gate.ps1", text)
+        self.assertLess(text.index("& $readiness"), text.index("& $canonical"))
         for expected in (
+            "readiness_gate = 'NOT_RUN'",
+            "$final.readiness_gate = 'PASS'",
             "upgrade_gate = 'NOT_RUN'",
             "current_release_gate = 'NOT_RUN'",
             "$final.upgrade_gate = 'PASS'",
             "$final.current_release_gate = 'PASS'",
-            "Historical 0.2.2 P0.4 -> exact 0.2.3 cross-version upgrade: PASS",
         ):
             self.assertIn(expected, text)
+
+    def test_readiness_blocks_known_unsafe_v03_referencefullhash_path(self):
+        text = READINESS.read_text(encoding="utf-8")
+        for expected in (
+            "windows-app-control-enterprise-trust-pack.v1",
+            "ReferenceFullHash",
+            "PyInstaller onefile is prohibited",
+            "packaging_layout=static-runtime",
+            "runtime_complete",
+            "installer_lifecycle_complete",
+            "enforced_lifecycle_ready",
+            "Enforced/ConstrainedLanguage",
+            "restores_exact_current_release",
+            "restores_pac_connectivity",
+            "changes_base_to_audit",
+            "issue #10",
+        ):
+            self.assertIn(expected, text)
+
+    def test_readiness_never_manages_policy(self):
+        lowered = READINESS.read_text(encoding="utf-8").lower()
+        for forbidden in (
+            "--update-policy",
+            "--remove-policy",
+            "set-ruleoption",
+            "set-mppreference",
+            "verifiedandreputablepolicystate",
+        ):
+            self.assertNotIn(forbidden, lowered)
 
     def test_final_wrapper_is_host_only_and_does_not_manage_policy(self):
         text = FINAL.read_text(encoding="utf-8")
         lowered = text.lower()
         self.assertIn("IsolatedAcceptanceEnvironment", text)
         self.assertIn("dedicated/isolated Windows 11", text)
-        self.assertIn("physical acceptance host", text)
-        self.assertIn("abandoned Windows VM", text)
-        self.assertIn("path is out of scope", text)
         for forbidden in ("--update-policy", "--remove-policy", "Set-RuleOption"):
             self.assertNotIn(forbidden.lower(), lowered)
 

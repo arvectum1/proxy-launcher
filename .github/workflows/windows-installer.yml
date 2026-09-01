@@ -42,6 +42,9 @@ jobs:
         run: |
           foreach ($script in @(
             'tools/build_windows_installer.ps1',
+            'tools/build_windows_appcontrol_static_runtime.ps1',
+            'tools/build_windows_appcontrol_recovery.ps1',
+            'tools/build_windows_appcontrol_installer.ps1',
             'tools/windows_promoted_license_compliance.ps1',
             'tools/prepare_windows_inno_setup_base.ps1',
             'tools/install_verified_windows_inno_setup.ps1',
@@ -54,6 +57,7 @@ jobs:
             'tools/windows_app_control_upgrade_acceptance.ps1',
             'tools/windows_app_control_preverified_release.ps1',
             'tools/windows_app_control_enforced_acceptance.ps1',
+            'tools/windows_app_control_enforced_readiness.ps1',
             'tools/windows_app_control_local_gate_complete.ps1',
             'qa/windows_installer_171_e2e.ps1',
             'qa/windows_rc_e2e.ps1',
@@ -64,12 +68,14 @@ jobs:
             Write-Host "PowerShell syntax PASS: $script"
           }
 
-      - name: Validate APL-WIN-014 exact baseline contracts
+      - name: Validate APL-WIN-014 exact baseline and post-incident contracts
         shell: pwsh
         run: |
           python -m unittest `
             tests.test_windows_app_control_legacy_baseline `
             tests.test_windows_app_control_final_local_gate `
+            tests.test_windows_app_control_post_incident_hardening `
+            tests.test_windows_app_control_enterprise_candidate `
             -v
 
       - name: Validate Inno Setup sovereignty contract
@@ -112,6 +118,23 @@ jobs:
           } catch {
             $message = ($_.Exception.Message -replace "`r|`n", ' ')
             Write-Host "::error title=Canonical Setup build failed::$message"
+            throw
+          }
+
+      - name: Build App Control enterprise candidate and native rescue bundle
+        id: appcontrol_candidate
+        shell: pwsh
+        run: |
+          try {
+            ./tools/build_windows_appcontrol_installer.ps1 `
+              -PythonExecutable '.build-venv\Scripts\python.exe'
+            $candidate = Get-ChildItem -LiteralPath out -Filter '*-windows-x64-appcontrol-setup-bundle.zip' -File | Select-Object -First 1
+            if (-not $candidate) { throw 'App Control enterprise candidate ZIP was not produced.' }
+            "bundle_path=$($candidate.FullName)" >> $env:GITHUB_OUTPUT
+            "bundle_name=$($candidate.Name)" >> $env:GITHUB_OUTPUT
+          } catch {
+            $message = ($_.Exception.Message -replace "`r|`n", ' ')
+            Write-Host "::error title=App Control enterprise candidate build failed::$message"
             throw
           }
 
@@ -175,7 +198,16 @@ jobs:
             out/windows-installer-171-e2e.json
             out/windows-rc-*.json
             out/windows-rc-SHA256SUMS.txt
+            out/*appcontrol*.json
             ${{ runner.temp }}/apl-*.log
+
+      - name: Upload App Control enterprise candidate
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.appcontrol_candidate.outputs.bundle_name }}
+          path: |
+            ${{ steps.appcontrol_candidate.outputs.bundle_path }}
+            out/*appcontrol*/**/*.json
 
       - name: Upload canonical Windows installer RC and acceptance evidence
         uses: actions/upload-artifact@v4

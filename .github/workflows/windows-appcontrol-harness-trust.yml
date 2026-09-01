@@ -1,0 +1,172 @@
+name: Windows App Control harness trust
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: windows-appcontrol-harness-trust-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  installroot-recovery-fix:
+    runs-on: windows-2022
+    permissions:
+      actions: read
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate patcher and bootstrap syntax/contracts
+        shell: powershell
+        run: |
+          foreach ($script in @(
+            'tools\windows_app_control_patch_installroot_recovery_state.ps1',
+            'tools\windows_app_control_candidate_harness_bootstrap.ps1',
+            'tools\windows_app_control_candidate_harness_trust.ps1'
+          )) {
+            $tokens = $null
+            $errors = $null
+            $ast = [System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path $script).Path,[ref]$tokens,[ref]$errors)
+            if ($errors.Count -gt 0) { throw "PowerShell parse errors in $script`: $($errors | Out-String)" }
+            Write-Host "PowerShell syntax PASS: $script"
+            if ($script -like '*harness_bootstrap.ps1') {
+              $methodCalls = @($ast.FindAll({ param($node) $node -is [System.Management.Automation.Language.InvokeMemberExpressionAst] },$true))
+              if ($methodCalls.Count -ne 0) { throw "Bootstrap contains prohibited method invocation(s): $($methodCalls.Extent.Text -join '; ')" }
+              $source = Get-Content -LiteralPath $script -Raw
+              if ($source -match '::') { throw 'Bootstrap contains prohibited static .NET member syntax (::).' }
+              if ($source -match '\b(New-Object|Add-Type|Invoke-Expression)\b') { throw 'Bootstrap contains prohibited high-risk ConstrainedLanguage construct.' }
+              Write-Host 'Bootstrap static ConstrainedLanguage contract: PASS'
+            }
+          }
+
+      - name: Download exact previously-validated 0.2.4 stand kit
+        uses: actions/download-artifact@v4
+        with:
+          name: APL-WIN-014-0.2.4-stand-kit
+          path: incoming
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: 32960223669
+
+      - name: Patch recovered install-root classification and rebuild manifest
+        id: patch
+        shell: powershell
+        run: |
+          $nested = Get-ChildItem -LiteralPath incoming -Recurse -File -Filter 'APL-WIN-014-0.2.4-stand-kit.zip' | Select-Object -First 1
+          if (-not $nested) { throw 'Exact prior stand-kit ZIP was not downloaded.' }
+          $expectedZip = '246b14064f3e32070a8498d4f7c848660f3c7f4dc0b61806346e9d3a8b03f116'
+          $actualZip = (Get-FileHash -LiteralPath $nested.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($actualZip -ne $expectedZip) { throw "Prior stand-kit ZIP SHA256 mismatch: $actualZip" }
+
+          $kit = Join-Path $PWD 'out\APL-WIN-014-0.2.4-stand-kit'
+          Remove-Item -LiteralPath $kit -Recurse -Force -ErrorAction SilentlyContinue
+          Expand-Archive -LiteralPath $nested.FullName -DestinationPath $kit -Force
+
+          $stand = Join-Path $kit 'APL-WIN-014-STAND.ps1'
+          $expectedStand = '4cc50bfb55bb5b1773c7a39468e11d53b2d87a05247b23babf40af33be529f1f'
+          $actualStand = (Get-FileHash -LiteralPath $stand -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($actualStand -ne $expectedStand) { throw "Prior stand-driver SHA256 mismatch: $actualStand" }
+
+          $patched = Join-Path $PWD 'out\patched-stand.ps1'
+          .\tools\windows_app_control_patch_installroot_recovery_state.ps1 -InputPath $stand -OutputPath $patched
+          Copy-Item -LiteralPath $patched -Destination $stand -Force
+
+          $tokens = $null
+          $errors = $null
+          [void][System.Management.Automation.Language.Parser]::ParseFile($stand,[ref]$tokens,[ref]$errors)
+          if ($errors.Count -gt 0) { throw "Patched stand-driver parse errors: $($errors | Out-String)" }
+
+          $manifestPath = Join-Path $kit 'stand-kit.json'
+          $manifest = Get-Content -LiteralPath $manifestPath -Raw -Encoding UTF8 | ConvertFrom-Json
+          if ([string]$manifest.schema -ne 'arvectum.proxy.apl-win-014-stand-kit.v1' -or [string]$manifest.result -ne 'PASS' -or [string]$manifest.version -ne '0.2.4') { throw 'Downloaded stand-kit manifest is not the expected 0.2.4 PASS kit.' }
+          $entries = @($manifest.files | Where-Object { [string]$_.relative_path -eq 'APL-WIN-014-STAND.ps1' })
+          if ($entries.Count -ne 1) { throw 'stand-kit manifest does not uniquely contain APL-WIN-014-STAND.ps1.' }
+          $entries[0].size = [long](Get-Item -LiteralPath $stand).Length
+          $entries[0].sha256 = (Get-FileHash -LiteralPath $stand -Algorithm SHA256).Hash.ToLowerInvariant()
+          $manifest | Add-Member -NotePropertyName installroot_recovery_state_patch -NotePropertyValue 'PASS' -Force
+          $manifest | Add-Member -NotePropertyName installroot_recovery_state_patch_commit -NotePropertyValue '${{ github.event.pull_request.head.sha }}' -Force
+          $manifest | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath $manifestPath -Encoding UTF8
+
+          foreach ($file in @($manifest.files)) {
+            $path = Join-Path $kit ([string]$file.relative_path)
+            if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { throw "Patched kit file missing: $($file.relative_path)" }
+            if ([long](Get-Item -LiteralPath $path).Length -ne [long]$file.size) { throw "Patched kit size mismatch: $($file.relative_path)" }
+            $sha = (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash.ToLowerInvariant()
+            if ($sha -ne ([string]$file.sha256).ToLowerInvariant()) { throw "Patched kit SHA256 mismatch: $($file.relative_path)" }
+          }
+
+          "kit=$kit" >> $env:GITHUB_OUTPUT
+          "stand_sha256=$((Get-FileHash -LiteralPath $stand -Algorithm SHA256).Hash.ToLowerInvariant())" >> $env:GITHUB_OUTPUT
+
+      - name: Build exact lab supplemental for patched stand driver
+        id: trust
+        shell: powershell
+        run: |
+          $kit = '${{ steps.patch.outputs.kit }}'
+          $trust = Join-Path $PWD 'out\patched-harness-trust'
+          .\tools\windows_app_control_candidate_harness_trust.ps1 `
+            -BasePolicyId 'DC1C604C-46EA-40B7-9F47-CF582B225D5E' `
+            -OutputDirectory $trust `
+            -CandidateRunner (Join-Path $kit 'APL-WIN-014.ps1') `
+            -CandidateStand (Join-Path $kit 'APL-WIN-014-STAND.ps1') `
+            -TrustPackV2 (Join-Path $kit 'kit-tools\windows_app_control_enterprise_trust_pack_v2.ps1') `
+            -EnforcedReadiness (Join-Path $kit 'kit-tools\windows_app_control_enforced_readiness.ps1')
+
+          $manifest = Get-Content -LiteralPath (Join-Path $trust 'harness-trust.json') -Raw -Encoding UTF8 | ConvertFrom-Json
+          if ([string]$manifest.result -ne 'PASS' -or [string]$manifest.purpose -ne 'lab-harness-only') { throw 'Patched harness trust did not PASS.' }
+          if ([int]$manifest.trusted_script_count -ne 4 -or [bool]$manifest.product_trust -or [bool]$manifest.final_acceptance_evidence) { throw 'Patched harness trust scope is invalid.' }
+          $standEntry = @($manifest.trusted_scripts | Where-Object { [string]$_.stand_relative_path -eq 'APL-WIN-014-STAND.ps1' })
+          if ($standEntry.Count -ne 1 -or ([string]$standEntry[0].sha256).ToLowerInvariant() -ne '${{ steps.patch.outputs.stand_sha256 }}') { throw 'Harness supplemental is not bound to exact patched stand-driver SHA256.' }
+          "trust=$trust" >> $env:GITHUB_OUTPUT
+          "policy_id=$([string]$manifest.supplemental_policy_id)" >> $env:GITHUB_OUTPUT
+          "cip_sha256=$([string]$manifest.supplemental_policy_cip_sha256)" >> $env:GITHUB_OUTPUT
+
+      - name: Assemble one self-contained replacement kit
+        id: delivery
+        shell: powershell
+        run: |
+          $kit = '${{ steps.patch.outputs.kit }}'
+          $fix = Join-Path $kit 'harness-fix-v2'
+          $trustTarget = Join-Path $fix 'harness-trust'
+          New-Item -ItemType Directory -Path $trustTarget -Force | Out-Null
+          Copy-Item -Path (Join-Path '${{ steps.trust.outputs.trust }}' '*') -Destination $trustTarget -Force
+          Copy-Item -LiteralPath 'tools\windows_app_control_candidate_harness_bootstrap.ps1' -Destination (Join-Path $fix 'APL-WIN-014-HARNESS-BOOTSTRAP.ps1') -Force
+
+          $delivery = [ordered]@{
+            schema = 'arvectum.proxy.apl-win-014-installroot-recovery-fix.v1'
+            task = 'APL-WIN-014'
+            result = 'PASS'
+            target = 'ARVECTUM-DEMO'
+            version = '0.2.4'
+            prior_validated_stand_kit_zip_sha256 = '246b14064f3e32070a8498d4f7c848660f3c7f4dc0b61806346e9d3a8b03f116'
+            patch_scope = 'stand-driver recovered install-root classification only; candidate/provisional/release bytes unchanged'
+            patched_stand_driver_sha256 = '${{ steps.patch.outputs.stand_sha256 }}'
+            lab_harness_policy_id = '${{ steps.trust.outputs.policy_id }}'
+            lab_harness_cip_sha256 = '${{ steps.trust.outputs.cip_sha256 }}'
+            product_trust_changed = $false
+            product_release_bytes_changed = $false
+            base_policy_changed_by_delivery = $false
+            network_changed_by_delivery = $false
+            execute_requires_separate_owner_action = $true
+          }
+          $delivery | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath (Join-Path $kit 'installroot-recovery-fix.json') -Encoding UTF8
+
+          $zip = Join-Path $PWD 'out\APL-WIN-014-0.2.4-stand-kit-INSTALLROOT-RECOVERY-FIX.zip'
+          Remove-Item -LiteralPath $zip -Force -ErrorAction SilentlyContinue
+          Compress-Archive -Path (Join-Path $kit '*') -DestinationPath $zip -Force
+          $sha = (Get-FileHash -LiteralPath $zip -Algorithm SHA256).Hash.ToLowerInvariant()
+          Write-Host "Replacement stand kit: $zip"
+          Write-Host "Replacement stand kit SHA256: $sha"
+          Write-Host "Patched stand-driver SHA256: ${{ steps.patch.outputs.stand_sha256 }}"
+          Write-Host "Lab harness PolicyID: ${{ steps.trust.outputs.policy_id }}"
+          Write-Host "Lab harness CIP SHA256: ${{ steps.trust.outputs.cip_sha256 }}"
+          "zip=$zip" >> $env:GITHUB_OUTPUT
+          "zip_sha256=$sha" >> $env:GITHUB_OUTPUT
+
+      - name: Upload replacement stand kit
+        uses: actions/upload-artifact@v4
+        with:
+          name: APL-WIN-014-0.2.4-INSTALLROOT-RECOVERY-FIX
+          path: ${{ steps.delivery.outputs.zip }}
