@@ -36,7 +36,18 @@ function Write-InstallLog([string]$message) {
 }
 
 function Get-Sha256([string]$path) {
-    (Get-FileHash -LiteralPath $path -Algorithm SHA256 -ErrorAction Stop).Hash
+    $CertUtil = Join-Path $env:SystemRoot 'System32\certutil.exe'
+    if (-not (Test-Path -LiteralPath $CertUtil -PathType Leaf)) { throw 'certutil.exe not found in System32' }
+    $output = & $CertUtil -hashfile $path SHA256
+    if ($LASTEXITCODE -ne 0) { throw "certutil SHA256 failed for $path" }
+    $hash = @()
+    foreach ($line in $output) {
+        $stripped = $line -replace '^\s+|\s+$'
+        if ($stripped -match '^[0-9A-Fa-f]{64}$') { $hash += $stripped }
+    }
+    if ($hash.Count -eq 0) { throw "certutil SHA256 produced no hash candidate for $path" }
+    if ($hash.Count -gt 1) { throw "certutil SHA256 produced multiple hash candidates for $path" }
+    return $hash[0]
 }
 
 function Test-ExactPath([string]$left, [string]$right) {
