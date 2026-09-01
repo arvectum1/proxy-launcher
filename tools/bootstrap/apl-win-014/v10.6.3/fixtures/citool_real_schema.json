@@ -1,0 +1,27 @@
+{
+  "Policies": [
+    {
+      "PolicyID": "dc1c604c-46ea-40b7-9f47-cf582b225d5e",
+      "BasePolicyID": "dc1c604c-46ea-40b7-9f47-cf582b225d5e",
+      "FriendlyName": "Arvectum APL-WIN-014 Lab Base",
+      "Version": 16777216,
+      "VersionString": "10.0.0.1",
+      "IsSystemPolicy": false,
+      "IsSignedPolicy": false,
+      "IsOnDisk": true,
+      "IsEnforced": true,
+      "IsAuthorized": true,
+      "PolicyOptions": [
+        "Enabled:UMCI",
+        "Enabled:Allow Supplemental Policies",
+        "Enabled:Revoked Expired As Unsigned",
+        "Enabled:Inherit Default Policy",
+        "Enabled:Unsigned System Integrity Policy",
+        "Enabled:Dynamic Code Security",
+        "Enabled:Advanced Boot Options Menu",
+        "Enabled:Update Policy No Reboot"
+      ]
+    }
+  ],
+  "OperationResult": 0
+}
