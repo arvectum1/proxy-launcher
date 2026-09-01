@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-    CiTool schema regression tests for V10.6.1.
+    CiTool schema regression tests for V10.6.3.
 .DESCRIPTION
     Validates that the CiTool schema adapter correctly handles real vs synthetic
     schemas, OperationResult checks, base policy validation, and fail-closed behavior.

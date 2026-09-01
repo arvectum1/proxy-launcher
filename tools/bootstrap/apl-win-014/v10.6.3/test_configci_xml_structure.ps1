@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-    ConfigCI XML structure regression tests for V10.6.2.
+    ConfigCI XML structure regression tests for V10.6.3.
 .DESCRIPTION
     Validates that the ConfigCI XML pattern matching correctly handles real ConfigCI
     output structure (Allow with Hash attribute, not Allow Type="Hash").

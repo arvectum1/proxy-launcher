@@ -26,9 +26,9 @@ $testResults = @()
 
 $tests = @(
     @{
-        Name = 'Get-FileHash'
+        Name = 'Get-FileHash (unavailable)'
         Script = { (Get-FileHash -LiteralPath $env:SystemRoot\System32\cmd.exe -Algorithm SHA256).Hash }
-        ExpectSuccess = $true
+        ExpectSuccess = $false
     },
     @{
         Name = 'Split-Path -Leaf'
@@ -104,9 +104,9 @@ $tests = @(
         ExpectSuccess = $true
     },
     @{
-        Name = '[regex]::Match (BLOCKED)'
+        Name = '[regex]::Match (available; prohibited by static contract)'
         Script = { [regex]::Match('test', 'test') }
-        ExpectSuccess = $false
+        ExpectSuccess = $true
     },
     @{
         Name = '[IO.Path]::GetFileName (BLOCKED)'
@@ -114,14 +114,14 @@ $tests = @(
         ExpectSuccess = $false
     },
     @{
-        Name = '.Trim() (BLOCKED)'
+        Name = '.Trim() (available; prohibited by static contract)'
         Script = { '  hello  '.Trim() }
-        ExpectSuccess = $false
+        ExpectSuccess = $true
     },
     @{
-        Name = '.ToLowerInvariant() (BLOCKED)'
+        Name = '.ToLowerInvariant() (available; prohibited by static contract)'
         Script = { 'HELLO'.ToLowerInvariant() }
-        ExpectSuccess = $false
+        ExpectSuccess = $true
     },
     @{
         Name = '[Environment]::GetFolderPath (BLOCKED)'

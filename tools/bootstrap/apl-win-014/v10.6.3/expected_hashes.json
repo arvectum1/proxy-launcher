@@ -2,35 +2,35 @@
   "schema": "arvectum.proxy.apl-win-014-bootstrap-hashes.v1",
   "task": "APL-WIN-014",
   "candidate_version": "0.2.3",
-  "source_commit": "b8c17fbfa92136fcac3a24dcc3ae82d72f13265d",
+  "source_commit": "f22c2977c0b6d76f02d80166f9aacfa984a569bf",
   "clm_compliant": true,
   "citool_schema_version": "real",
   "configci_xml_structure": "real-allow-hash-attribute",
   "files": {
     "setup_exe": {
-      "filename": "PLACEHOLDER-NEEDS-CI-BUILD",
-      "sha256": "PLACEHOLDER-NEEDS-CI-BUILD",
-      "size": 0
+      "filename": "Arvectum-Proxy-Launcher-0.2.3-windows-x64-setup.exe",
+      "sha256": "e9f06e948ec29a33599b25650c73dd413721bdb5a47bc84394664132c4cd15d3",
+      "size": 18581944
     },
     "main_exe": {
       "filename": "Arvectum Proxy Launcher.exe",
-      "sha256": "PLACEHOLDER-NEEDS-CI-BUILD",
-      "size": 0
+      "sha256": "cffe1bef2262c0eae9c8739f55fb3b015a8080cc616aeac369d066bb7a55c925",
+      "size": 16702660
     },
     "build_manifest": {
       "filename": "build_manifest.json",
-      "sha256": "PLACEHOLDER-NEEDS-CI-BUILD",
-      "size": 0
+      "sha256": "bef5eb352a46dfd62f7e3a3190af2d17922bfddbcb891fcbe6631f009177264f",
+      "size": 882
     },
     "upgrade_helper": {
       "filename": "upgrade_helper.ps1",
-      "sha256": "PLACEHOLDER-NEEDS-CI-BUILD",
-      "size": 0
+      "sha256": "c29a3aa64750190e6103a6829265d9541967756a968fc29cc0229733966a2836",
+      "size": 10090
     },
     "uninstall_helper": {
       "filename": "uninstall_helper.ps1",
-      "sha256": "PLACEHOLDER-NEEDS-CI-BUILD",
-      "size": 0
+      "sha256": "dc33e8a5ebcf2222da35e60e898d088471f55e730a13c13b67aaa3373a50af66",
+      "size": 6986
     }
   },
   "v10_6_3_policy": {
