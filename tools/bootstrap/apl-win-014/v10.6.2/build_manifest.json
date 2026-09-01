@@ -1,0 +1,17 @@
+{
+  "product": "Arvectum Proxy Launcher",
+  "company": "ООО «Арвектум»",
+  "version": "0.2.4",
+  "canonical_version": "0.2.4",
+  "synthetic_lifecycle_fixture": false,
+  "platform": "windows-x64",
+  "format": "setup",
+  "source_commit": "b8b2f382de6ab863ddddcf16fccf8b6f36b5ea38",
+  "application_sha256": "0f275a8ab6d1640e3c392308c6ae4af4f613fc2750c62df7f173300eb0e0e447",
+  "upgrade_helper_sha256": "411f9e905723d4f5fcffb26057d8e5885087a35b988dda286ade11d9f0f81a95",
+  "uninstall_helper_sha256": "7abc1fe332975440d2c84be608773a890c5bb4deb130eea54378a128e79b0a44",
+  "third_party_license_manifest_sha256": "f0e7e455d853493eb4ff35aa499a9233e30be92538f227d2a143918e81560fa9",
+  "inno_setup_version": "6.7.1",
+  "inno_setup_version_verification": "compiler-preprocessor-ver-0x06070100",
+  "iscc_sha256": "eb6f4410c8db367a5f74127e8025ad2ccacc0afabbe783959d237df3050f97fb"
+}

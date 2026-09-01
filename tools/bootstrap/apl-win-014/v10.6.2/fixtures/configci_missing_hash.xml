@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<SiPolicy xmlns="urn:schemas-microsoft-com:sipolicy">
+  <VersionEx>10.0.0.16</VersionEx>
+  <PolicyID>{5FA8A6DF-5185-4F49-B6AE-93341E9F3FCA}</PolicyID>
+  <BasePolicyID>{dc1c604c-46ea-40b7-9f47-cf582b225d5e}</BasePolicyID>
+  <FriendlyName>Arvectum APL-WIN-014 Harness V10.6.2 Bootstrap</FriendlyName>
+  <FileRules>
+    <Allow ID="ID_ALLOW_A_1" FriendlyName="Arvectum Proxy Launcher.exe Hash Sha1" />
+    <Allow ID="ID_ALLOW_A_2" FriendlyName="Arvectum Proxy Launcher.exe Hash Sha256" Hash="BB2233445566778899AABBCCDDEEFF0011223344" />
+    <Allow ID="ID_ALLOW_A_3" FriendlyName="Arvectum Proxy Launcher.exe Hash Page Sha1" Hash="CC33445566778899AABBCCDDEEFF001122334455" />
+    <Allow ID="ID_ALLOW_A_4" FriendlyName="Arvectum Proxy Launcher.exe Hash Page Sha256" Hash="DD445566778899AABBCCDDEEFF00112233445566" />
+    <Allow ID="ID_ALLOW_A_5" FriendlyName="Arvectum-Proxy-Launcher-0.2.4-windows-x64-setup.exe Hash Sha1" Hash="EE5566778899AABBCCDDEEFF0011223344556677" />
+    <Allow ID="ID_ALLOW_A_6" FriendlyName="Arvectum-Proxy-Launcher-0.2.4-windows-x64-setup.exe Hash Sha256" Hash="FF66778899AABBCCDDEEFF001122334455667788" />
+    <Allow ID="ID_ALLOW_A_7" FriendlyName="Arvectum-Proxy-Launcher-0.2.4-windows-x64-setup.exe Hash Page Sha1" Hash="00778899AABBCCDDEEFF00112233445566778899" />
+    <Allow ID="ID_ALLOW_A_8" FriendlyName="Arvectum-Proxy-Launcher-0.2.4-windows-x64-setup.exe Hash Page Sha256" Hash="118899AABBCCDDEEFF0011223344556677889900" />
+  </FileRules>
+  <SigningScenarios>
+    <SigningScenario Value="12" ID="ID_SIGNSCENARIO_1">
+      <ProductSigners>
+        <FileRulesRef>
+          <FileRuleRef RuleID="ID_ALLOW_A_1" />
+          <FileRuleRef RuleID="ID_ALLOW_A_2" />
+          <FileRuleRef RuleID="ID_ALLOW_A_3" />
+          <FileRuleRef RuleID="ID_ALLOW_A_4" />
+          <FileRuleRef RuleID="ID_ALLOW_A_5" />
+          <FileRuleRef RuleID="ID_ALLOW_A_6" />
+          <FileRuleRef RuleID="ID_ALLOW_A_7" />
+          <FileRuleRef RuleID="ID_ALLOW_A_8" />
+        </FileRulesRef>
+      </ProductSigners>
+      <RejectedSigners />
+    </SigningScenario>
+  </SigningScenarios>
+  <Signers />
+  <UpdatePolicySigners />
+  <HvciOptions>0</HvciOptions>
+  <PolicyType>Supplemental Policy</PolicyType>
+</SiPolicy>
