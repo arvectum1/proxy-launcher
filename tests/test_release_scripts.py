@@ -143,7 +143,7 @@ class ReleaseScriptTests(unittest.TestCase):
     def test_uninstaller_closes_only_processes_owned_by_exact_exe_path(self):
         text = self.read("uninstall.ps1")
         self.assertIn("Name='Arvectum Proxy Launcher.exe'", text)
-        self.assertIn("GetFullPath($_.ExecutablePath) -ieq $exe", text)
+        self.assertIn("(Normalize-Path $_.ExecutablePath) -ieq $exe", text)
         self.assertIn("Stop-Process -Id $process.ProcessId", text)
 
     def test_source_helper_bats_target_documents_install(self):
@@ -245,10 +245,34 @@ class ReleaseScriptTests(unittest.TestCase):
         self.assertNotIn("& $uninstaller", text)
 
     @unittest.skipUnless(HAS_INSTALLER_TRACK, "installer track is not present in portable P0 branch")
-    def test_upgrade_helper_hashing_is_independent_of_get_filehash_cmdlet(self):
+    def test_upgrade_helper_hashing_uses_get_filehash_cmdlet(self):
         text = self.read("installer/upgrade_helper.ps1")
-        self.assertIn("System.Security.Cryptography.SHA256", text)
-        self.assertNotIn("Get-FileHash", text)
+        self.assertIn("Get-FileHash", text)
+        self.assertNotIn("System.Security.Cryptography.SHA256", text)
+
+    @unittest.skipUnless(HAS_INSTALLER_TRACK, "installer track is not present in portable P0 branch")
+    def test_product_helpers_pass_static_clm_scan(self):
+        patterns = [
+            "[System.Security.Cryptography.SHA256]",
+            "[IO.File]::ReadAllBytes",
+            "[BitConverter]::ToString",
+            "[IO.Path]::GetFullPath",
+            "[int]::TryParse",
+            ".ToLowerInvariant()",
+            ".ToUpperInvariant()",
+            ".Trim()",
+            ".TrimEnd()",
+            ".Dispose()",
+            "[Environment]::GetFolderPath",
+            "[System.IO.Path]::GetFileName",
+            "[System.IO.Path]::GetDirectoryName",
+            "[System.IO.File]::Open",
+        ]
+        files = ["installer/upgrade_helper.ps1", "installer/uninstall_helper.ps1", "uninstall.ps1"]
+        for name in files:
+            text = self.read(name)
+            for pattern in patterns:
+                self.assertNotIn(pattern, text, msg=f"{pattern!r} found in {name}")
 
     @unittest.skipUnless(HAS_INSTALLER_TRACK, "installer track is not present in portable P0 branch")
     def test_upgrade_helper_waits_for_gui_rollback_under_strict_mode(self):

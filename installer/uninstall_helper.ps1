@@ -19,7 +19,11 @@ function Write-MaintenanceLog([string]$Message) {
 
 function Test-ExactPath([string]$Candidate, [string]$Expected) {
   if (-not $Candidate -or -not $Expected) { return $false }
-  try { return [IO.Path]::GetFullPath($Candidate) -ieq [IO.Path]::GetFullPath($Expected) } catch { return $false }
+  try {
+    $c = $Candidate -replace '\\+$'
+    $e = $Expected -replace '\\+$'
+    return $c -ieq $e
+  } catch { return $false }
 }
 
 function Get-RecoveryBackups {
@@ -89,7 +93,7 @@ function Invoke-NativeCapture([string]$FilePath, [string[]]$Arguments) {
 function Remove-OwnedLegacyTask([string]$ExpectedExe) {
   $schtasks = Join-Path $env:SystemRoot 'System32\schtasks.exe'
   $query = Invoke-NativeCapture $schtasks @('/Query', '/TN', $TaskName, '/XML')
-  if ($query.ExitCode -ne 0 -or -not $query.StdOut.Trim()) {
+  if ($query.ExitCode -ne 0 -or -not ($query.StdOut -replace '^\s+|\s+$')) {
     Write-MaintenanceLog 'legacy scheduled task absent; nothing to remove'
     return
   }
@@ -111,7 +115,7 @@ function Remove-OwnedLegacyTask([string]$ExpectedExe) {
   $owned = $false
   foreach ($node in $nodes) {
     $command = [Environment]::ExpandEnvironmentVariables([string]$node.Command)
-    $arguments = ([string]$node.Arguments).Trim()
+    $arguments = ([string]$node.Arguments) -replace '^\s+|\s+$'
     if ((Test-ExactPath $command $ExpectedExe) -and $arguments -ieq '--start') {
       $owned = $true
       break
