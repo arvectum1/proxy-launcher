@@ -1,0 +1,43 @@
+{
+  "schema": "arvectum.proxy.apl-win-014-bootstrap-hashes.v1",
+  "task": "APL-WIN-014",
+  "candidate_version": "0.2.4",
+  "source_commit": "3425046ed2431373f8fac1175ce3a5235d6ca266",
+  "clm_compliant": true,
+  "citool_schema_version": "real",
+  "configci_xml_structure": "real-allow-hash-attribute",
+  "files": {
+    "setup_exe": {
+      "filename": "Arvectum-Proxy-Launcher-0.2.4-windows-x64-setup.exe",
+      "sha256": "7b9e7b95b0c26a028ed903ba7281a60dfd83c190ebdcf1208c05c1f687450389",
+      "size": 17611607
+    },
+    "main_exe": {
+      "filename": "Arvectum Proxy Launcher.exe",
+      "sha256": "0f275a8ab6d1640e3c392308c6ae4af4f613fc2750c62df7f173300eb0e0e447",
+      "size": 15725400
+    },
+    "build_manifest": {
+      "filename": "build_manifest.json",
+      "sha256": "6f7219be4664947e4cd6082423f9592e7774e34c1c72d92a6a89a29f98eb690d",
+      "size": 899
+    },
+    "upgrade_helper": {
+      "filename": "upgrade_helper.ps1",
+      "sha256": "411f9e905723d4f5fcffb26057d8e5885087a35b988dda286ade11d9f0f81a95",
+      "size": 15348
+    },
+    "uninstall_helper": {
+      "filename": "uninstall_helper.ps1",
+      "sha256": "7abc1fe332975440d2c84be608773a890c5bb4deb130eea54378a128e79b0a44",
+      "size": 6745
+    }
+  },
+  "v10_6_2_policy": {
+    "friendly_name": "Arvectum APL-WIN-014 Harness V10.6.2 Bootstrap",
+    "version": "10.0.0.16",
+    "base_policy_id": "dc1c604c-46ea-40b7-9f47-cf582b225d5e",
+    "scope": "BootstrapHash: Setup + Main EXE only",
+    "configci_xml_structure": "Allow with Hash attribute (not Allow Type=Hash)"
+  }
+}

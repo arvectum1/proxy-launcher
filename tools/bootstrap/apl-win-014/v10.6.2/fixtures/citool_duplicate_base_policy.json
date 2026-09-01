@@ -1,0 +1,29 @@
+{
+  "Policies": [
+    {
+      "PolicyID": "dc1c604c-46ea-40b7-9f47-cf582b225d5e",
+      "BasePolicyID": "dc1c604c-46ea-40b7-9f47-cf582b225d5e",
+      "FriendlyName": "Arvectum APL-WIN-014 Lab Base",
+      "IsOnDisk": true,
+      "IsEnforced": true,
+      "IsAuthorized": true,
+      "PolicyOptions": [
+        "Enabled:UMCI",
+        "Enabled:Allow Supplemental Policies"
+      ]
+    },
+    {
+      "PolicyID": "dc1c604c-46ea-40b7-9f47-cf582b225d5e",
+      "BasePolicyID": "dc1c604c-46ea-40b7-9f47-cf582b225d5e",
+      "FriendlyName": "Arvectum APL-WIN-014 Lab Base Duplicate",
+      "IsOnDisk": true,
+      "IsEnforced": true,
+      "IsAuthorized": true,
+      "PolicyOptions": [
+        "Enabled:UMCI",
+        "Enabled:Allow Supplemental Policies"
+      ]
+    }
+  ],
+  "OperationResult": 0
+}
