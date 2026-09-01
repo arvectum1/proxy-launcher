@@ -73,7 +73,11 @@ foreach ($path in @($setup, $installerManifest)) {
     if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { throw "Single-build installer output missing: $path" }
 }
 
-$help = Start-Process -FilePath $setup -ArgumentList '/HELP' -PassThru -Wait
+$help = Start-Process -FilePath $setup -ArgumentList '/HELP' -PassThru
+if (-not $help.WaitForExit(30000)) {
+    Stop-Process -Id $help.Id -Force
+    throw 'Setup /HELP exceeded the 30-second non-interactive timeout.'
+}
 if ($help.ExitCode -ne 0) { throw "Setup /HELP failed with exit code $($help.ExitCode)." }
 
 $issue171Evidence = Join-Path $root 'out\windows-installer-171-e2e.json'
