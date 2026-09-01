@@ -13,7 +13,9 @@ function Write-InstallLog([string]$Message) {
 }
 
 function Get-Sha256([string]$Path) {
-  (Get-FileHash -LiteralPath $Path -Algorithm SHA256 -ErrorAction Stop).Hash
+  $output = & certutil -hashfile $Path SHA256
+  if ($LASTEXITCODE -ne 0) { throw "certutil SHA256 failed for $Path" }
+  return ($output[1] -replace '^\s+|\s+$')
 }
 
 function Test-ExactPath([string]$Candidate, [string]$Expected) {

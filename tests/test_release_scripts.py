@@ -245,9 +245,11 @@ class ReleaseScriptTests(unittest.TestCase):
         self.assertNotIn("& $uninstaller", text)
 
     @unittest.skipUnless(HAS_INSTALLER_TRACK, "installer track is not present in portable P0 branch")
-    def test_upgrade_helper_hashing_uses_get_filehash_cmdlet(self):
+    def test_upgrade_helper_hashing_uses_certutil_or_filehash(self):
         text = self.read("installer/upgrade_helper.ps1")
-        self.assertIn("Get-FileHash", text)
+        self.assertTrue(
+            "certutil" in text or "Get-FileHash" in text,
+            msg="upgrade_helper.ps1 must hash via certutil or Get-FileHash")
         self.assertNotIn("System.Security.Cryptography.SHA256", text)
 
     @unittest.skipUnless(HAS_INSTALLER_TRACK, "installer track is not present in portable P0 branch")
