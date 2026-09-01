@@ -50,10 +50,32 @@ class WindowsV1064WorkflowContractTests(unittest.TestCase):
             'manifest_application_equals_application = $true',
             'github_run_id = $runId',
             'github_run_attempt = $attempt',
-            'WaitForExit(30000)',
-            'Setup /HELP exceeded the 30-second non-interactive timeout.',
+            'Windows RC E2E did not use the sealed setup.',
+            "ci_headless_initialization = 'PASS'",
+            "real_stand_help_probe = 'PENDING'",
         ):
             self.assertIn(token, script)
+        self.assertNotIn("ArgumentList '/HELP'", script)
+
+    def test_headless_initialization_and_real_stand_help_are_distinct(self):
+        contract = read('docs/APL_WIN_014_V10_6_4_HEADLESS_INITIALIZATION.md')
+        for token in (
+            'CI_HEADLESS_INITIALIZATION',
+            'REAL_STAND_HELP_PROBE',
+            '/VERYSILENT',
+            '/SUPPRESSMSGBOXES',
+            '/NORESTART',
+            '/SP-',
+            'PENDING',
+        ):
+            self.assertIn(token, contract)
+
+    def test_lifecycle_processes_have_fail_closed_timeouts(self):
+        for path in ('qa/windows_installer_171_e2e.ps1', 'qa/windows_rc_e2e.ps1'):
+            script = read(path)
+            self.assertIn('$processTimeoutMs = 300000', script)
+            self.assertIn('WaitForExit($processTimeoutMs)', script)
+            self.assertIn('Stop-Process -Id $p.Id -Force', script)
 
 
 if __name__ == '__main__':
