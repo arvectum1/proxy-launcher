@@ -93,12 +93,42 @@ function Write-RecoverySnapshots {
     [IO.File]::WriteAllText($envBackup, ($environment | ConvertTo-Json -Depth 5 -Compress), $utf8NoBom)
 }
 
+function Publish-SetupDiagnostics([string]$Label, [int]$ExitCode, [string]$InnoLog) {
+    $diagLog = Join-Path $PWD "windows-installer-171-$Label-install.log"
+    if (Test-Path -LiteralPath $installLog) {
+        Copy-Item -LiteralPath $installLog -Destination $diagLog -Force
+    }
+    Write-Host "=== SETUP DIAGNOSTICS: $Label ==="
+    Write-Host "Label: $Label"
+    Write-Host "Setup exit code: $ExitCode"
+    Write-Host "CurrentSetup: $CurrentSetup"
+    Write-Host "InstallRoot: $installRoot"
+    Write-Host "StateRoot: $stateRoot"
+    $installLogExists = Test-Path -LiteralPath $installLog
+    Write-Host "install.log exists: $installLogExists"
+    if ($installLogExists) {
+        Write-Host "install.log length: $((Get-Item -LiteralPath $installLog).Length)"
+    }
+    $innoLogExists = Test-Path -LiteralPath $InnoLog
+    Write-Host "Inno log exists: $innoLogExists"
+    if ($innoLogExists) {
+        Write-Host "Inno log length: $((Get-Item -LiteralPath $InnoLog).Length)"
+    }
+    if ($innoLogExists) {
+        Write-Host "=== INNO SETUP LOG: $Label ==="
+        Get-Content -LiteralPath $InnoLog | ForEach-Object { Write-Host "INNO> $_" }
+    }
+    if ($installLogExists) {
+        Write-Host "=== UPGRADE HELPER INSTALL.LOG: $Label ==="
+        Get-Content -LiteralPath $installLog | ForEach-Object { Write-Host "INSTALL> $_" }
+    }
+}
+
 function Invoke-SetupSuccess([string]$Label) {
     $log = Join-Path $PWD "windows-installer-171-$Label.log"
     $p = Start-Process -FilePath $CurrentSetup -ArgumentList @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/SP-',"/LOG=$log") -PassThru -Wait
     if ($p.ExitCode -ne 0) {
-        if (Test-Path -LiteralPath $log) { Get-Content -LiteralPath $log }
-        if (Test-Path -LiteralPath $installLog) { Get-Content -LiteralPath $installLog }
+        Publish-SetupDiagnostics -Label $Label -ExitCode $p.ExitCode -InnoLog $log
         throw "${Label}: Setup failed with exit code $($p.ExitCode)"
     }
     return $log
@@ -107,6 +137,10 @@ function Invoke-SetupSuccess([string]$Label) {
 function Invoke-SetupExpectedFailure([string]$Label) {
     $log = Join-Path $PWD "windows-installer-171-$Label.log"
     $p = Start-Process -FilePath $CurrentSetup -ArgumentList @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/SP-',"/LOG=$log") -PassThru -Wait
+    $diagLog = Join-Path $PWD "windows-installer-171-$Label-install.log"
+    if (Test-Path -LiteralPath $installLog) {
+        Copy-Item -LiteralPath $installLog -Destination $diagLog -Force
+    }
     if ($p.ExitCode -eq 0) {
         throw "${Label}: Setup unexpectedly succeeded; preflight did not fail closed"
     }

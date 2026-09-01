@@ -7,8 +7,8 @@
 
 $ErrorActionPreference = 'Stop'
 $taskName = 'ArvectumProxyLauncher'
-$shortcut = Join-Path ([Environment]::GetFolderPath('Desktop')) 'Arvectum Proxy Launcher.lnk'
-$startMenuShortcut = Join-Path ([Environment]::GetFolderPath('Programs')) 'Arvectum Proxy Launcher.lnk'
+$shortcut = Join-Path (Get-FolderPath 'Desktop') 'Arvectum Proxy Launcher.lnk'
+$startMenuShortcut = Join-Path (Get-FolderPath 'Programs') 'Arvectum Proxy Launcher.lnk'
 $arpKey = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\ArvectumProxyLauncher'
 $exe = Join-Path $AppDir 'Arvectum Proxy Launcher.exe'
 $stateDir = Join-Path $env:LOCALAPPDATA 'Arvectum\ProxyLauncher'
@@ -19,6 +19,15 @@ $ownerMarkerValue = 'ARVECTUM_PROXY_LAUNCHER_INSTALL_OWNER'
 $legacyOwnerMarkerValue = 'ARVECTUM_PROXY_LAUNCHER_WINDOWS_RC2_1'
 $installLog = Join-Path $stateDir 'install.log'
 
+function Get-FolderPath([string]$Folder) {
+    switch ($Folder) {
+        'Desktop' { return Join-Path $env:USERPROFILE 'Desktop' }
+        'Programs' { return Join-Path $env:APPDATA 'Microsoft\Windows\Start Menu\Programs' }
+        'MyDocuments' { return Join-Path $env:USERPROFILE 'Documents' }
+        default { return $Folder }
+    }
+}
+
 function Write-InstallLog([string]$message) {
     try {
         New-Item -ItemType Directory -Path $stateDir -Force | Out-Null
@@ -27,11 +36,47 @@ function Write-InstallLog([string]$message) {
 }
 
 function Get-Sha256([string]$path) {
-    (Get-FileHash -LiteralPath $path -Algorithm SHA256 -ErrorAction Stop).Hash.ToUpperInvariant()
+    $CertUtil = Join-Path $env:SystemRoot 'System32\certutil.exe'
+    if (-not (Test-Path -LiteralPath $CertUtil -PathType Leaf)) { throw 'certutil.exe not found in System32' }
+    $output = & $CertUtil -hashfile $path SHA256
+    if ($LASTEXITCODE -ne 0) { throw "certutil SHA256 failed for $path" }
+    $hash = @()
+    foreach ($line in $output) {
+        $stripped = $line -replace '^\s+|\s+$'
+        if ($stripped -match '^[0-9A-Fa-f]{64}$') { $hash += $stripped }
+    }
+    if ($hash.Count -eq 0) { throw "certutil SHA256 produced no hash candidate for $path" }
+    if ($hash.Count -gt 1) { throw "certutil SHA256 produced multiple hash candidates for $path" }
+    return $hash[0]
 }
 
 function Test-ExactPath([string]$left, [string]$right) {
-    [IO.Path]::GetFullPath($left) -ieq [IO.Path]::GetFullPath($right)
+    if (-not $left -or -not $right) { return $false }
+    try {
+        $resolvedLeft = (Resolve-Path -LiteralPath $left -ErrorAction Stop).Path -replace '\\+$'
+    } catch { return $false }
+    try {
+        $resolvedRight = (Resolve-Path -LiteralPath $right -ErrorAction Stop).Path -replace '\\+$'
+    } catch { return $false }
+    return $resolvedLeft -ieq $resolvedRight
+}
+
+function Get-PathLeaf([string]$Path) {
+    if (-not $Path) { return '' }
+    $parts = $Path -split '\\'
+    return $parts[-1]
+}
+
+function Get-PathParent([string]$Path) {
+    if (-not $Path) { return '' }
+    $parts = $Path -split '\\'
+    if ($parts.Count -le 1) { return '' }
+    return ($parts[0..($parts.Count - 2)] -join '\')
+}
+
+function Normalize-Path([string]$Path) {
+    if (-not $Path) { return '' }
+    return ($Path -replace '\\+$')
 }
 
 function Close-OwnedLauncher([string]$path) {
@@ -48,8 +93,7 @@ function Close-OwnedLauncher([string]$path) {
 
 function Test-FileUnlocked([string]$path) {
     try {
-        $stream = [IO.File]::Open($path, [IO.FileMode]::Open, [IO.FileAccess]::ReadWrite, [IO.FileShare]::None)
-        $stream.Dispose()
+        $null = Get-Content -LiteralPath $path -ReadCount 0 -ErrorAction Stop
         return $true
     } catch { return $false }
 }
@@ -57,7 +101,7 @@ function Test-FileUnlocked([string]$path) {
 function Get-QuotedCommandTarget([string]$command) {
     if ($command -match '^\s*"([^"]+)"(?:\s+(.*))?\s*$') {
         $commandArgs = if ($matches.Count -gt 2) { $matches[2] } else { '' }
-        return [pscustomobject]@{ path = [IO.Path]::GetFullPath($matches[1]); args = $commandArgs.Trim() }
+        return [pscustomobject]@{ path = (Normalize-Path $matches[1]); args = ($commandArgs -replace '^\s+|\s+$') }
     }
     return $null
 }
@@ -67,13 +111,13 @@ function Get-RecoveryRunClassification([string]$command, [string]$canonicalExe) 
     $parsed = Get-QuotedCommandTarget $command
     if (-not $parsed) { return 'FOREIGN_OR_UNKNOWN' }
     if (Test-ExactPath $parsed.path $canonicalExe) {
-        if ([IO.Path]::GetFileName($parsed.path) -ieq 'Arvectum Proxy Launcher.exe' -and $parsed.args -ieq '--start') {
+        if ((Get-PathLeaf $parsed.path) -ieq 'Arvectum Proxy Launcher.exe' -and $parsed.args -ieq '--start') {
             return 'CANONICAL_ARVECTUM'
         }
         return 'FOREIGN_OR_UNKNOWN'
     }
-    $leaf = [IO.Path]::GetFileName($parsed.path)
-    $folder = [IO.Path]::GetDirectoryName($parsed.path)
+    $leaf = Get-PathLeaf $parsed.path
+    $folder = Get-PathParent $parsed.path
     $documents = Join-Path $env:USERPROFILE 'Documents\ArvectumProxyLauncher'
     $oldLocal = Join-Path $env:LOCALAPPDATA 'ArvectumProxyLauncher'
     $stable = Join-Path $env:LOCALAPPDATA 'Arvectum\ProxyLauncher'
@@ -99,7 +143,7 @@ function Get-LegacyOwnedProcesses([string]$command) {
 }
 
 function Test-LegacyRecoveryBackupsRemain([string]$legacyExe) {
-    $legacyDir = [IO.Path]::GetDirectoryName($legacyExe)
+    $legacyDir = Get-PathParent $legacyExe
     $oldLocal = Join-Path $env:LOCALAPPDATA 'ArvectumProxyLauncher'
     $documents = Join-Path $env:USERPROFILE 'Documents\ArvectumProxyLauncher'
     $backupNames = @('proxy_internet_backup.json', 'proxy_env_backup.json')
@@ -171,7 +215,7 @@ function Migrate-LegacyRunValues([string]$canonicalExe) {
 }
 
 if ($Install) {
-    $sourceDirFull = [System.IO.Path]::GetFullPath($SourceDir)
+    $sourceDirFull = Normalize-Path $SourceDir
     $sourceExe = Join-Path $sourceDirFull 'Arvectum Proxy Launcher.exe'
     $exeForInstall = Join-Path $AppDir 'Arvectum Proxy Launcher.exe'
     if (-not (Test-Path -LiteralPath $sourceExe -PathType Leaf)) { throw "INSTALL FAILED: release executable is missing: '$sourceExe'." }
@@ -194,8 +238,6 @@ if ($Install) {
         & $exeForInstall --stop
         if ($null -ne $LASTEXITCODE -and $LASTEXITCODE -ne 0) { throw 'UPDATE BLOCKED: previous version could not safely stop and roll back network settings.' }
     }
-    # Resolve a proven legacy recovery process before judging backup state;
-    # its own --stop is responsible for exact rollback of legacy network state.
     Migrate-LegacyRunValues $exeForInstall
     if ((Test-Path -LiteralPath $internetBackup) -or (Test-Path -LiteralPath $envBackup)) {
         throw 'UPDATE BLOCKED: recovery backups remain after stopping the previous version.'
@@ -206,8 +248,6 @@ if ($Install) {
         while (-not (Test-FileUnlocked $exeForInstall) -and (Get-Date) -lt $deadline) { Start-Sleep -Milliseconds 250 }
         if (-not (Test-FileUnlocked $exeForInstall)) { throw 'INSTALL FAILED: previous Launcher is still running.' }
     }
-    # Legacy Run cleanup completed before backup validation; replacement starts
-    # only after both legacy and canonical network recovery are safe.
     try {
         if (Test-Path -LiteralPath $oldExe) { Remove-Item $oldExe -Force }
         if (Test-Path -LiteralPath $exeForInstall) { Move-Item -LiteralPath $exeForInstall -Destination $oldExe -Force }
@@ -227,7 +267,7 @@ if ($Install) {
         $sourceFile = Join-Path $sourceDirFull $name
         Copy-Item -LiteralPath $sourceFile -Destination (Join-Path $AppDir $name) -Force
     }
-    $shortcut = Join-Path ([Environment]::GetFolderPath('Desktop')) 'Arvectum Proxy Launcher.lnk'
+    $shortcut = Join-Path (Get-FolderPath 'Desktop') 'Arvectum Proxy Launcher.lnk'
     $shell = New-Object -ComObject WScript.Shell
     $lnk = $shell.CreateShortcut($shortcut)
     $lnk.TargetPath = $exeForInstall
@@ -251,15 +291,12 @@ if ($Install) {
     exit 0
 }
 
-# Destructive removal is allowed only for a directory that is clearly owned by
-# Arvectum Proxy Launcher.  AppDir can be overridden for QA, so never trust the
-# argument/environment variable by itself before Remove-Item -Recurse.
-$fullAppDir = [System.IO.Path]::GetFullPath($AppDir).TrimEnd('\')
+$fullAppDir = Normalize-Path $AppDir
 $protectedPaths = @(
-    [System.IO.Path]::GetFullPath($env:USERPROFILE).TrimEnd('\'),
-    [System.IO.Path]::GetFullPath([Environment]::GetFolderPath('MyDocuments')).TrimEnd('\')
+    Normalize-Path $env:USERPROFILE,
+    Normalize-Path (Get-FolderPath 'MyDocuments')
 )
-if ([System.IO.Path]::GetFileName($fullAppDir) -ne 'ArvectumProxyLauncher') {
+if ((Get-PathLeaf $fullAppDir) -ne 'ArvectumProxyLauncher') {
     throw "Refusing uninstall: unexpected application directory '$fullAppDir'."
 }
 if ($protectedPaths -contains $fullAppDir) {
@@ -275,7 +312,7 @@ if (($appDirItem.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
 if (-not (Test-Path -LiteralPath $ownerMarker -PathType Leaf)) {
     throw 'Refusing uninstall: Arvectum ownership marker is missing.'
 }
-$markerValue = (Get-Content -LiteralPath $ownerMarker -Raw).Trim()
+$markerValue = (Get-Content -LiteralPath $ownerMarker -Raw) -replace '^\s+|\s+$'
 if ($markerValue -notin @($ownerMarkerValue, $legacyOwnerMarkerValue)) {
     throw 'Refusing uninstall: Arvectum ownership marker is invalid.'
 }
@@ -286,9 +323,6 @@ Write-Host '============================================'
 Write-Host ''
 
 Write-Host '[1/3] Restoring network settings...'
-# A clean installation that was never started owns no network backup.  Its
-# uninstaller must be a no-op for network settings; invoking --rollback from
-# this unrelated copy could otherwise interfere with another Launcher folder.
 if ((Test-Path -LiteralPath $internetBackup) -or (Test-Path -LiteralPath $envBackup)) {
     if (-not (Test-Path -LiteralPath $exe)) {
         throw 'Recovery files exist but the application executable is missing.'
@@ -319,13 +353,9 @@ if ($userAutostart -and $userAutostart -match [regex]::Escape($exe)) {
 Write-Host '       Done.'
 
 Write-Host '[3/3] Removing files and shortcut...'
-# The GUI and headless engine share the same one-file executable.  After a
-# successful rollback, close only processes whose resolved executable path is
-# exactly this owned installation; never kill a same-named foreign copy.
 $ownedProcesses = Get-CimInstance Win32_Process -Filter "Name='Arvectum Proxy Launcher.exe'" -ErrorAction SilentlyContinue |
     Where-Object {
-        $_.ExecutablePath -and
-        [System.IO.Path]::GetFullPath($_.ExecutablePath) -ieq $exe
+        $_.ExecutablePath -and (Test-ExactPath $_.ExecutablePath $exe)
     }
 foreach ($process in $ownedProcesses) {
     Stop-Process -Id $process.ProcessId -Force -ErrorAction Stop

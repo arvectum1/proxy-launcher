@@ -143,7 +143,7 @@ class ReleaseScriptTests(unittest.TestCase):
     def test_uninstaller_closes_only_processes_owned_by_exact_exe_path(self):
         text = self.read("uninstall.ps1")
         self.assertIn("Name='Arvectum Proxy Launcher.exe'", text)
-        self.assertIn("GetFullPath($_.ExecutablePath) -ieq $exe", text)
+        self.assertIn("Test-ExactPath $_.ExecutablePath $exe", text)
         self.assertIn("Stop-Process -Id $process.ProcessId", text)
 
     def test_source_helper_bats_target_documents_install(self):
@@ -245,10 +245,158 @@ class ReleaseScriptTests(unittest.TestCase):
         self.assertNotIn("& $uninstaller", text)
 
     @unittest.skipUnless(HAS_INSTALLER_TRACK, "installer track is not present in portable P0 branch")
-    def test_upgrade_helper_hashing_is_independent_of_get_filehash_cmdlet(self):
+    def test_upgrade_helper_uses_system32_certutil_hashing(self):
         text = self.read("installer/upgrade_helper.ps1")
-        self.assertIn("System.Security.Cryptography.SHA256", text)
-        self.assertNotIn("Get-FileHash", text)
+        self.assertIn("System32\\certutil.exe", text,
+                       msg="upgrade_helper.ps1 must resolve certutil via System32")
+        self.assertNotIn("Get-FileHash", text,
+                         msg="Get-FileHash is not acceptable in production lifecycle")
+        self.assertNotIn("System.Security.Cryptography.SHA256", text)
+        self.assertNotIn("$output[1]", text,
+                         msg="certutil parser must not use hardcoded index")
+        self.assertIn("^[0-9A-Fa-f]{64}$", text,
+                       msg="certutil parser must match SHA256 structurally")
+        self.assertIn("hash.Count -eq 0", text,
+                       msg="certutil parser must fail closed on no hash")
+        self.assertIn("hash.Count -gt 1", text,
+                       msg="certutil parser must fail closed on multiple hashes")
+
+    @unittest.skipUnless(HAS_INSTALLER_TRACK, "installer track is not present in portable P0 branch")
+    def test_uninstall_uses_system32_certutil_hashing(self):
+        text = self.read("uninstall.ps1")
+        self.assertIn("System32\\certutil.exe", text,
+                       msg="uninstall.ps1 must resolve certutil via System32")
+        self.assertNotIn("Get-FileHash", text,
+                         msg="Get-FileHash is not acceptable in production lifecycle")
+        self.assertNotIn("System.Security.Cryptography.SHA256", text)
+        self.assertIn("^[0-9A-Fa-f]{64}$", text,
+                       msg="uninstall.ps1 must parse SHA256 structurally")
+        self.assertIn("hash.Count -eq 0", text,
+                       msg="uninstall.ps1 must fail closed on no hash")
+        self.assertIn("hash.Count -gt 1", text,
+                       msg="uninstall.ps1 must fail closed on multiple hashes")
+
+    @unittest.skipUnless(HAS_INSTALLER_TRACK, "installer track is not present in portable P0 branch")
+    def test_product_helpers_pass_static_clm_scan(self):
+        patterns = [
+            "[System.Security.Cryptography.SHA256]",
+            "[IO.File]::ReadAllBytes",
+            "[BitConverter]::ToString",
+            "[IO.Path]::GetFullPath",
+            "[int]::TryParse",
+            ".ToLowerInvariant()",
+            ".ToUpperInvariant()",
+            ".Trim()",
+            ".TrimEnd()",
+            ".Dispose()",
+            "[Environment]::GetFolderPath",
+            "[System.IO.Path]::GetFileName",
+            "[System.IO.Path]::GetDirectoryName",
+            "[System.IO.File]::Open",
+        ]
+        files = ["installer/upgrade_helper.ps1", "installer/uninstall_helper.ps1", "uninstall.ps1"]
+        for name in files:
+            text = self.read(name)
+            for pattern in patterns:
+                self.assertNotIn(pattern, text, msg=f"{pattern!r} found in {name}")
+
+    @staticmethod
+    def _parse_certutil_output(lines, exit_code=0):
+        """Replicate the PowerShell Get-Sha256 parser logic for behavioral testing."""
+        if exit_code != 0:
+            raise RuntimeError("certutil SHA256 failed")
+        candidates = []
+        for line in lines:
+            stripped = line.strip()
+            if len(stripped) == 64 and all(c in "0123456789abcdefABCDEF" for c in stripped):
+                candidates.append(stripped)
+        if len(candidates) == 0:
+            raise RuntimeError("certutil SHA256 produced no hash candidate")
+        if len(candidates) > 1:
+            raise RuntimeError("certutil SHA256 produced multiple hash candidates")
+        return candidates[0]
+
+    def test_certutil_parser_english_output(self):
+        SHA = "A" * 64
+        lines = [
+            "SHA256 hash of file:",
+            SHA,
+            "CertUtil: -hashfile command completed successfully.",
+        ]
+        self.assertEqual(self._parse_certutil_output(lines), SHA)
+
+    def test_certutil_parser_localized_output(self):
+        SHA = "aB" * 32
+        lines = [
+            "Хеш SHA256 файла:",
+            SHA,
+            "CertUtil: команда -hashfile завершена успешно.",
+        ]
+        self.assertEqual(self._parse_certutil_output(lines), SHA)
+
+    def test_certutil_parser_uppercase_hash(self):
+        SHA = "FF" * 32
+        lines = ["SHA256 hash:", SHA, "CertUtil: OK"]
+        self.assertEqual(self._parse_certutil_output(lines), SHA)
+
+    def test_certutil_parser_lowercase_hash(self):
+        SHA = "ff" * 32
+        lines = ["SHA256 hash:", SHA, "CertUtil: OK"]
+        self.assertEqual(self._parse_certutil_output(lines), SHA)
+
+    def test_certutil_parser_whitespace_around_hash(self):
+        SHA = "AB" * 32
+        lines = ["  SHA256 hash:  ", "  " + SHA + "  ", "  CertUtil: OK  "]
+        self.assertEqual(self._parse_certutil_output(lines), SHA)
+
+    def test_certutil_parser_fail_closed_no_hash(self):
+        lines = ["SHA256 hash of file:", "CertUtil: OK"]
+        with self.assertRaises(RuntimeError):
+            self._parse_certutil_output(lines)
+
+    def test_certutil_parser_fail_closed_exit_code_nonzero(self):
+        lines = ["Some error message"]
+        with self.assertRaises(RuntimeError):
+            self._parse_certutil_output(lines, exit_code=1)
+
+    def test_certutil_parser_fail_closed_truncated_hash(self):
+        lines = ["SHA256:", "AB" * 31, "CertUtil: OK"]
+        with self.assertRaises(RuntimeError):
+            self._parse_certutil_output(lines)
+
+    def test_certutil_parser_fail_closed_two_candidates(self):
+        SHA1 = "AA" * 32
+        SHA2 = "BB" * 32
+        lines = ["SHA256:", SHA1, "extra text", SHA2, "CertUtil: OK"]
+        with self.assertRaises(RuntimeError):
+            self._parse_certutil_output(lines)
+
+    def test_certutil_parser_fail_closed_hex32_too_short(self):
+        lines = ["SHA256:", "ABCDEF01", "CertUtil: OK"]
+        with self.assertRaises(RuntimeError):
+            self._parse_certutil_output(lines)
+
+    @unittest.skipUnless(HAS_INSTALLER_TRACK, "installer track is not present in portable P0 branch")
+    def test_exact_path_uses_resolve_path_fail_closed(self):
+        files = ["installer/upgrade_helper.ps1", "installer/uninstall_helper.ps1", "uninstall.ps1"]
+        for name in files:
+            text = self.read(name)
+            self.assertIn("function Test-ExactPath", text, msg=f"Test-ExactPath missing in {name}")
+            self.assertIn("Resolve-Path -LiteralPath", text, msg=f"Resolve-Path -LiteralPath missing in {name}")
+            self.assertNotIn("[IO.Path]::GetFullPath", text, msg=f"[IO.Path]::GetFullPath found in {name}")
+            tc = text[text.index("function Test-ExactPath"):]
+            tc = tc[tc.index("{") + 1:]
+            brace = 1
+            for i, ch in enumerate(tc):
+                if ch == '{': brace += 1
+                elif ch == '}': brace -= 1
+                if brace == 0:
+                    tc = tc[:i]
+                    break
+            self.assertIn("Resolve-Path -LiteralPath", tc,
+                          msg=f"Resolve-Path must resolve both paths in {name}")
+            self.assertNotIn("[IO.Path]::GetFullPath", tc,
+                             msg=f"[IO.Path]::GetFullPath found in Test-ExactPath of {name}")
 
     @unittest.skipUnless(HAS_INSTALLER_TRACK, "installer track is not present in portable P0 branch")
     def test_upgrade_helper_waits_for_gui_rollback_under_strict_mode(self):

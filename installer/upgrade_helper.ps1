@@ -13,18 +13,37 @@ function Write-InstallLog([string]$Message) {
 }
 
 function Get-Sha256([string]$Path) {
-  $sha256 = [System.Security.Cryptography.SHA256]::Create()
-  try {
-    $bytes = [IO.File]::ReadAllBytes($Path)
-    ([BitConverter]::ToString($sha256.ComputeHash($bytes)) -replace '-', '').ToLowerInvariant()
-  } finally {
-    $sha256.Dispose()
+  $CertUtil = Join-Path $env:SystemRoot 'System32\certutil.exe'
+  if (-not (Test-Path -LiteralPath $CertUtil -PathType Leaf)) { throw 'certutil.exe not found in System32' }
+  $output = & $CertUtil -hashfile $Path SHA256
+  if ($LASTEXITCODE -ne 0) { throw "certutil SHA256 failed for $Path" }
+  $hash = @()
+  foreach ($line in $output) {
+    $stripped = $line -replace '^\s+|\s+$'
+    if ($stripped -match '^[0-9A-Fa-f]{64}$') { $hash += $stripped }
   }
+  if ($hash.Count -eq 0) { throw "certutil SHA256 produced no hash candidate for $Path" }
+  if ($hash.Count -gt 1) { throw "certutil SHA256 produced multiple hash candidates for $Path" }
+  return $hash[0]
 }
 
 function Test-ExactPath([string]$Candidate, [string]$Expected) {
   if (-not $Candidate -or -not $Expected) { return $false }
-  try { return [IO.Path]::GetFullPath($Candidate) -ieq [IO.Path]::GetFullPath($Expected) } catch { return $false }
+  try {
+    $resolvedCandidate = (Resolve-Path -LiteralPath $Candidate -ErrorAction Stop).Path -replace '\\+$'
+  } catch {
+    Write-InstallLog "Test-ExactPath RESOLVE_FAILED Candidate='$Candidate'"
+    return $false
+  }
+  try {
+    $resolvedExpected = (Resolve-Path -LiteralPath $Expected -ErrorAction Stop).Path -replace '\\+$'
+  } catch {
+    Write-InstallLog "Test-ExactPath RESOLVE_FAILED Expected='$Expected'"
+    return $false
+  }
+  $result = $resolvedCandidate -ieq $resolvedExpected
+  Write-InstallLog "Test-ExactPath Candidate='$Candidate' Expected='$Expected' ResolvedCandidate='$resolvedCandidate' ResolvedExpected='$resolvedExpected' Match=$result"
+  return $result
 }
 
 function Get-RecoveryBackups {
@@ -83,9 +102,12 @@ function Assert-RecoverySafe([string]$ExpectedExe) {
 function Remove-StalePid([string]$ExpectedExe) {
   $pidPath = Join-Path $StateRoot 'proxy_core.pid'
   if (-not (Test-Path -LiteralPath $pidPath -PathType Leaf)) { return }
-  $raw = (Get-Content -LiteralPath $pidPath -Raw -ErrorAction SilentlyContinue).Trim()
+  $raw = (Get-Content -LiteralPath $pidPath -Raw -ErrorAction SilentlyContinue) -replace '^\s+|\s+$'
   $parsedPid = 0
-  $validPid = [int]::TryParse($raw, [ref]$parsedPid)
+  $validPid = $false
+  if ($raw -match '^\d+$') {
+    try { $parsedPid = [int]$Matches[0]; $validPid = $true } catch { $validPid = $false }
+  }
   $process = $null
   if ($validPid -and $parsedPid -gt 0) {
     $process = Get-CimInstance Win32_Process -Filter "ProcessId=$parsedPid" -ErrorAction SilentlyContinue
@@ -155,9 +177,9 @@ try {
   Write-InstallLog "payload EXE: $payloadExe"
   $embeddedHash = Get-Sha256 $payloadExe
   Write-InstallLog "embedded application expected SHA256: $($manifest.application_sha256)"
-  if ($embeddedHash -ne $manifest.application_sha256) { throw 'embedded application SHA256 verification failed' }
+  if ($embeddedHash -ine $manifest.application_sha256) { throw 'embedded application SHA256 verification failed' }
   $selfHash = Get-Sha256 (Join-Path $PayloadRoot 'upgrade_helper.ps1')
-  if ($selfHash -ne $manifest.upgrade_helper_sha256) { throw 'upgrade helper SHA256 verification failed' }
+  if ($selfHash -ine $manifest.upgrade_helper_sha256) { throw 'upgrade helper SHA256 verification failed' }
 
   $existingExe = Join-Path $InstallRoot 'Arvectum Proxy Launcher.exe'
   $ownerMarker = Join-Path $InstallRoot '.arvectum-install-owner'
@@ -179,13 +201,13 @@ try {
   $old = "$existingExe.old"
   Remove-Item -LiteralPath $staged -Force -ErrorAction SilentlyContinue
   Copy-Item -LiteralPath $payloadExe -Destination $staged -Force
-  if ((Get-Sha256 $staged) -ne $manifest.application_sha256) { throw 'staged application SHA256 verification failed' }
+  if ((Get-Sha256 $staged) -ine $manifest.application_sha256) { throw 'staged application SHA256 verification failed' }
 
   try {
     Remove-Item -LiteralPath $old -Force -ErrorAction SilentlyContinue
     if (Test-Path -LiteralPath $existingExe) { Move-Item -LiteralPath $existingExe -Destination $old -Force }
     Move-Item -LiteralPath $staged -Destination $existingExe -Force
-    if ((Get-Sha256 $existingExe) -ne $manifest.application_sha256) { throw 'final application SHA256 verification failed' }
+    if ((Get-Sha256 $existingExe) -ine $manifest.application_sha256) { throw 'final application SHA256 verification failed' }
     Remove-Item -LiteralPath $old -Force -ErrorAction SilentlyContinue
     Write-InstallLog 'transactional replacement committed'
   } catch {
