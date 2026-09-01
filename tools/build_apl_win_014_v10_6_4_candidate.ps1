@@ -73,13 +73,8 @@ foreach ($path in @($setup, $installerManifest)) {
     if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { throw "Single-build installer output missing: $path" }
 }
 
-$help = Start-Process -FilePath $setup -ArgumentList '/HELP' -PassThru
-if (-not $help.WaitForExit(30000)) {
-    Stop-Process -Id $help.Id -Force
-    throw 'Setup /HELP exceeded the 30-second non-interactive timeout.'
-}
-if ($help.ExitCode -ne 0) { throw "Setup /HELP failed with exit code $($help.ExitCode)." }
-
+# Inno Setup /HELP is an interactive dialog. Headless CI proves initialization
+# through the exact setup's silent lifecycle E2E; the manual /HELP probe is a stand gate.
 $issue171Evidence = Join-Path $root 'out\windows-installer-171-e2e.json'
 & (Join-Path $root 'qa\windows_installer_171_e2e.ps1') -CurrentSetup $setup -CurrentPortableExe $app -CurrentVersion $version -EvidencePath $issue171Evidence
 if ($LASTEXITCODE -ne 0) { throw 'Installer #171 E2E failed.' }
@@ -98,6 +93,7 @@ $installedHash = [string]$installerEvidence.final_application_sha256
 if ($installedHash -cne $frozenApplication.sha256) { throw 'Installed application hash does not equal the frozen candidate application hash.' }
 if ([string]$manifest.application_sha256 -cne $frozenApplication.sha256) { throw 'Installer build manifest application hash does not equal frozen candidate application hash.' }
 if ([string]$installerEvidence.current_setup_sha256 -cne (Get-Sha256 $setup)) { throw 'Installer E2E did not use the sealed setup.' }
+if ([string]$rc.current_setup_sha256 -cne (Get-Sha256 $setup)) { throw 'Windows RC E2E did not use the sealed setup.' }
 Require-Pass $installerEvidence.result 'Installer #171 E2E'
 Require-Pass $rc.result 'Windows RC E2E'
 Require-Pass $acceptanceEvidence.result 'Windows RC acceptance'
@@ -136,6 +132,8 @@ $evidence = [ordered]@{
         uninstall = $rc.phases.uninstall
         rollback_recovery = 'PASS'
         product_clm = 'PASS'
+        ci_headless_initialization = 'PASS'
+        real_stand_help_probe = 'PENDING'
     }
 }
 $evidencePath = Join-Path $output 'candidate_evidence.json'

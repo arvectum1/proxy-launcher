@@ -25,6 +25,7 @@ $repair = Join-Path $installRoot 'Arvectum Proxy Launcher Repair.exe'
 $stateRoot = Join-Path $env:LOCALAPPDATA 'Arvectum\ProxyLauncher'
 $installLog = Join-Path $stateRoot 'install.log'
 $runPath = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run'
+$processTimeoutMs = 300000
 $evidence = [ordered]@{
     schema = 'arvectum.proxy.windows-rc-e2e.v1'
     current_version = $CurrentVersion
@@ -43,7 +44,11 @@ function Get-RunValue([string]$Name) {
 
 function Invoke-Setup([string]$Path, [string]$Label) {
     $log = Join-Path $PWD "windows-rc-$Label.log"
-    $p = Start-Process -FilePath $Path -ArgumentList @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/SP-',"/LOG=$log") -PassThru -Wait
+    $p = Start-Process -FilePath $Path -ArgumentList @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/SP-',"/LOG=$log") -PassThru
+    if (-not $p.WaitForExit($processTimeoutMs)) {
+        Stop-Process -Id $p.Id -Force
+        throw "$Label setup exceeded the five-minute non-interactive timeout"
+    }
     if ($p.ExitCode -ne 0) {
         if (Test-Path $log) { Get-Content $log }
         if (Test-Path $installLog) { Get-Content $installLog }
@@ -54,7 +59,11 @@ function Invoke-Setup([string]$Path, [string]$Label) {
 
 function Invoke-Status([string]$Label) {
     if (-not (Test-Path -LiteralPath $exe)) { throw "${Label}: installed executable is missing" }
-    $p = Start-Process -FilePath $exe -ArgumentList '--status' -PassThru -Wait
+    $p = Start-Process -FilePath $exe -ArgumentList '--status' -PassThru
+    if (-not $p.WaitForExit($processTimeoutMs)) {
+        Stop-Process -Id $p.Id -Force
+        throw "$Label --status exceeded the five-minute non-interactive timeout"
+    }
     if ($p.ExitCode -ne 0) { throw "${Label}: --status failed with exit code $($p.ExitCode)" }
 }
 
@@ -62,7 +71,11 @@ function Invoke-Uninstall([string]$Label) {
     $uninstaller = Join-Path $installRoot 'unins000.exe'
     if (-not (Test-Path -LiteralPath $uninstaller)) { throw "${Label}: uninstaller is missing" }
     $log = Join-Path $PWD "windows-rc-$Label-uninstall.log"
-    $p = Start-Process -FilePath $uninstaller -ArgumentList @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART',"/LOG=$log") -PassThru -Wait
+    $p = Start-Process -FilePath $uninstaller -ArgumentList @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART',"/LOG=$log") -PassThru
+    if (-not $p.WaitForExit($processTimeoutMs)) {
+        Stop-Process -Id $p.Id -Force
+        throw "$Label uninstall exceeded the five-minute non-interactive timeout"
+    }
     if ($p.ExitCode -ne 0) {
         if (Test-Path $log) { Get-Content $log }
         throw "${Label}: uninstall failed with exit code $($p.ExitCode)"

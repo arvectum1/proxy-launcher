@@ -39,6 +39,7 @@ $mainProgramShortcut = Join-Path $programs 'Arvectum Proxy Launcher.lnk'
 $repairProgramShortcut = Join-Path $programs 'Repair Arvectum Proxy Launcher.lnk'
 $desktopShortcut = Join-Path $desktop 'Arvectum Proxy Launcher.lnk'
 $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+$processTimeoutMs = 300000
 
 $evidence = [ordered]@{
     schema = 'arvectum.proxy.windows-installer-171-e2e.v1'
@@ -126,7 +127,11 @@ function Publish-SetupDiagnostics([string]$Label, [int]$ExitCode, [string]$InnoL
 
 function Invoke-SetupSuccess([string]$Label) {
     $log = Join-Path $PWD "windows-installer-171-$Label.log"
-    $p = Start-Process -FilePath $CurrentSetup -ArgumentList @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/SP-',"/LOG=$log") -PassThru -Wait
+    $p = Start-Process -FilePath $CurrentSetup -ArgumentList @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/SP-',"/LOG=$log") -PassThru
+    if (-not $p.WaitForExit($processTimeoutMs)) {
+        Stop-Process -Id $p.Id -Force
+        throw "${Label}: Setup exceeded the five-minute non-interactive timeout"
+    }
     if ($p.ExitCode -ne 0) {
         Publish-SetupDiagnostics -Label $Label -ExitCode $p.ExitCode -InnoLog $log
         throw "${Label}: Setup failed with exit code $($p.ExitCode)"
@@ -136,7 +141,11 @@ function Invoke-SetupSuccess([string]$Label) {
 
 function Invoke-SetupExpectedFailure([string]$Label) {
     $log = Join-Path $PWD "windows-installer-171-$Label.log"
-    $p = Start-Process -FilePath $CurrentSetup -ArgumentList @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/SP-',"/LOG=$log") -PassThru -Wait
+    $p = Start-Process -FilePath $CurrentSetup -ArgumentList @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/SP-',"/LOG=$log") -PassThru
+    if (-not $p.WaitForExit($processTimeoutMs)) {
+        Stop-Process -Id $p.Id -Force
+        throw "${Label}: Setup exceeded the five-minute non-interactive timeout"
+    }
     $diagLog = Join-Path $PWD "windows-installer-171-$Label-install.log"
     if (Test-Path -LiteralPath $installLog) {
         Copy-Item -LiteralPath $installLog -Destination $diagLog -Force
@@ -157,7 +166,11 @@ function Assert-NoCommittedInstallSurface([string]$Label) {
 function Invoke-InstalledCleanup {
     if (-not (Test-Path -LiteralPath $uninstaller -PathType Leaf)) { return }
     $log = Join-Path $PWD 'windows-installer-171-cleanup-uninstall.log'
-    $p = Start-Process -FilePath $uninstaller -ArgumentList @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART',"/LOG=$log") -PassThru -Wait
+    $p = Start-Process -FilePath $uninstaller -ArgumentList @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART',"/LOG=$log") -PassThru
+    if (-not $p.WaitForExit($processTimeoutMs)) {
+        Stop-Process -Id $p.Id -Force
+        throw 'cleanup uninstall exceeded the five-minute non-interactive timeout'
+    }
     if ($p.ExitCode -ne 0) { throw "cleanup uninstall failed with exit code $($p.ExitCode)" }
 }
 
