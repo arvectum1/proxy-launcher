@@ -96,17 +96,19 @@ class WindowsAppControlLegacyBaselineContractTests(unittest.TestCase):
         ):
             self.assertIn(expected, text)
 
-    def test_final_gate_wires_canonical_enforced_acceptance_only(self):
+    def test_final_gate_wires_readiness_then_canonical_enforced_acceptance(self):
         text = FINAL.read_text(encoding="utf-8")
         for expected in (
             "LegacyClientZip",
             "BaselineManifestPath",
             "BaselineTrustPackDirectory",
-            "Historical 0.2.2 P0.4 -> exact 0.2.3",
+            "Historical 0.2.2 P0.4 -> exact current",
+            "windows_app_control_enforced_readiness.ps1",
             "windows_app_control_enforced_acceptance.ps1",
             "windows_app_control_preverified_release.ps1",
         ):
             self.assertIn(expected, text)
+        self.assertLess(text.index("& $readiness"), text.index("& $canonical"))
         for retired in (
             "windows_app_control_upgrade_acceptance.ps1",
             "windows_app_control_local_gate.ps1",

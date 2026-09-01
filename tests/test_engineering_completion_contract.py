@@ -16,10 +16,21 @@ REQUIRED_HYGIENE_GUARDS = (
 
 
 class EngineeringCompletionContractTests(unittest.TestCase):
-    def test_sealed_product_version_remains_unchanged(self):
+    def test_sealed_023_is_historical_and_current_identity_has_advanced(self):
         version = (ROOT / "VERSION").read_text(encoding="utf-8").strip()
-        self.assertEqual(version, "0.2.3")
         self.assertEqual(proxy_core.APP_VERSION, version)
+        self.assertNotEqual(version, "0.2.3")
+        numeric = tuple(int(part) for part in version.split("-")[0].split("."))
+        self.assertGreaterEqual(numeric, (0, 2, 4))
+
+        # The exact sealed 0.2.3 identity remains historical evidence; advancing
+        # VERSION must not relabel or rewrite those immutable acceptance constants.
+        preverified = (ROOT / "tools" / "windows_app_control_preverified_release.ps1").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("v0.2.3-ru.2", preverified)
+        self.assertIn("5808bde9d0ac45048d50bc256878519257f53bf0a9fa523a81ccb2eff0e21414", preverified.lower())
+        self.assertIn("f8d98f987ce92dee7979b12b69a56d120ddb12244bebe2559bc51359a53f9c7a", preverified.lower())
 
     def test_retired_compatibility_module_is_physically_absent(self):
         retired = ROOT / ("proxy_core_" + "legacy.py")

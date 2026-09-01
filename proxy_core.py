@@ -7,7 +7,7 @@ Owns release/state bootstrap and installs explicit runtime owners onto the canon
 import sys as _runtime_sys
 
 # Release identity consumed by logging and release guards.
-APP_VERSION = "0.2.3"
+APP_VERSION = "0.2.4"
 ENGINEERING_MILESTONE = "P0.2"
 
 # State/bootstrap values required before all canonical owners are installed.
@@ -44,7 +44,7 @@ import windows_pac_recovery as _windows_pac_recovery
 import windows_system_proxy as _windows_system_proxy
 
 # Source-contract index retained for release guards that inspect this facade.
-# APP_VERSION = "0.2.3"
+# APP_VERSION = "0.2.4"
 # ENGINEERING_MILESTONE = "P0.2"
 # _LEGACY_INSTALL_OWNER_VALUES
 # LEGACY_ARVECTUM
