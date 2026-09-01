@@ -1,0 +1,56 @@
+name: APL-WIN-014 V10.6.4 candidate
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_commit:
+        description: Exact merged canonical main commit to build once
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  candidate:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.source_commit }}
+
+      - name: Verify exact clean candidate source
+        shell: pwsh
+        run: |
+          $head = (git rev-parse HEAD).Trim()
+          if ($head -cne '${{ inputs.source_commit }}') { throw "Checked out $head, expected ${{ inputs.source_commit }}" }
+          if (git status --porcelain) { throw 'Candidate source checkout is not clean.' }
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12.10'
+
+      - name: Install exact Inno Setup 6.7.1
+        shell: pwsh
+        run: choco install innosetup --version=6.7.1 --no-progress -y
+
+      - name: Build, test, and seal one candidate transaction
+        shell: pwsh
+        run: |
+          $output = "out\apl-win-014-v10.6.4-candidate-${{ github.run_id }}-${{ github.run_attempt }}"
+          ./tools/build_apl_win_014_v10_6_4_candidate.ps1 `
+            -CandidateSourceCommit '${{ inputs.source_commit }}' `
+            -CandidateOutputDirectory $output `
+            -PythonExecutable python
+          Compress-Archive -Path "$output\*" -DestinationPath "$output.zip" -CompressionLevel Optimal
+          $hash = (Get-FileHash -LiteralPath "$output.zip" -Algorithm SHA256).Hash.ToLowerInvariant()
+          "candidate_bundle_path=$output.zip" >> $env:GITHUB_OUTPUT
+          "candidate_bundle_sha256=$hash" >> $env:GITHUB_OUTPUT
+
+      - name: Upload sealed V10.6.4 candidate bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: apl-win-014-v10.6.4-candidate-${{ github.run_id }}-${{ github.run_attempt }}
+          path: out/apl-win-014-v10.6.4-candidate-${{ github.run_id }}-${{ github.run_attempt }}.zip
+          if-no-files-found: error
+          retention-days: 90

@@ -3,13 +3,20 @@
 param(
     [string]$PythonExecutable = 'python',
     [string]$IsccPath,
-    [switch]$SyntheticPredecessor
+    [switch]$SyntheticPredecessor,
+    [switch]$UseExistingPayload,
+    [string]$ApplicationExe,
+    [string]$PortableZip,
+    [string]$BuildResultPath,
+    [string]$ExpectedApplicationSha256
 )
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 if ($env:OS -ne 'Windows_NT') { throw 'Windows installer build must run on Windows.' }
 $root = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 Set-Location $root
+
+function Hash([string]$Path) { (Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash.ToLowerInvariant() }
 
 $canonicalVersion = (Get-Content VERSION -Raw).Trim()
 $semver = [regex]::Match($canonicalVersion, '^(?<major>0|[1-9]\d*)\.(?<minor>0|[1-9]\d*)\.(?<patch>0|[1-9]\d*)(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$')
@@ -36,7 +43,22 @@ $versionCore = ($version -split '[-+]')[0]
 $versionInfoVersion = "$versionCore.0"
 $exe = Join-Path $root 'dist\Arvectum Proxy Launcher.exe'
 $portableZip = Join-Path $root "out\Arvectum-Proxy-Launcher-$canonicalVersion-windows-x64-portable.zip"
-if (-not (Test-Path -LiteralPath $exe) -or -not (Test-Path -LiteralPath $portableZip)) {
+
+if ($UseExistingPayload) {
+    foreach ($input in @($ApplicationExe, $PortableZip, $BuildResultPath)) {
+        if ([string]::IsNullOrWhiteSpace($input)) { throw 'UseExistingPayload requires -ApplicationExe, -PortableZip, and -BuildResultPath.' }
+        if (-not (Test-Path -LiteralPath $input -PathType Leaf)) { throw "UseExistingPayload input does not exist: $input" }
+    }
+    $exe = (Resolve-Path -LiteralPath $ApplicationExe).Path
+    $portableZip = (Resolve-Path -LiteralPath $PortableZip).Path
+    $buildResult = Get-Content -LiteralPath $BuildResultPath -Raw | ConvertFrom-Json
+    if ([string]$buildResult.version -cne $canonicalVersion) { throw 'UseExistingPayload build-result version does not match VERSION.' }
+    if ([string]$buildResult.format -cne 'portable') { throw 'UseExistingPayload build-result format must be portable.' }
+    if ([string]$buildResult.source_commit -cne (git rev-parse HEAD).Trim()) { throw 'UseExistingPayload build-result source_commit does not match HEAD.' }
+    if ((Hash $portableZip) -cne ([string]$buildResult.zip_sha256).ToLowerInvariant()) { throw 'UseExistingPayload portable ZIP hash does not match build-result.json.' }
+    if ((Hash $exe) -cne ([string]$buildResult.exe_sha256).ToLowerInvariant()) { throw 'UseExistingPayload application hash does not match build-result.json.' }
+    if ($ExpectedApplicationSha256 -and (Hash $exe) -cne $ExpectedApplicationSha256.ToLowerInvariant()) { throw 'UseExistingPayload application hash does not match -ExpectedApplicationSha256.' }
+} elseif (-not (Test-Path -LiteralPath $exe) -or -not (Test-Path -LiteralPath $portableZip)) {
     & (Join-Path $root 'tools\clean_build_windows.ps1') -PythonExecutable $PythonExecutable
     if ($LASTEXITCODE) { throw 'portable build failed' }
     & (Join-Path $root 'tools\windows_promoted_license_compliance.ps1') -PortableZip $portableZip
@@ -57,6 +79,17 @@ Copy-Item -LiteralPath (Join-Path $root 'THIRD_PARTY_NOTICES.txt') -Destination 
 $licenseExtract = Join-Path $root 'out\installer-license-source'
 Remove-Item -LiteralPath $licenseExtract -Recurse -Force -ErrorAction SilentlyContinue
 Expand-Archive -LiteralPath $portableZip -DestinationPath $licenseExtract -Force
+$portableExe = Join-Path $licenseExtract 'Arvectum Proxy Launcher.exe'
+if (-not (Test-Path -LiteralPath $portableExe -PathType Leaf)) { throw 'Portable ZIP does not contain Arvectum Proxy Launcher.exe.' }
+if ((Hash $portableExe) -cne (Hash $exe)) { throw 'Portable ZIP application bytes do not match the installer payload application.' }
+if ($UseExistingPayload) {
+    $portableSums = Join-Path $licenseExtract 'SHA256SUMS.txt'
+    if (-not (Test-Path -LiteralPath $portableSums -PathType Leaf)) { throw 'UseExistingPayload portable ZIP has no SHA256SUMS.txt.' }
+    $sumMatch = Select-String -LiteralPath $portableSums -Pattern '^[0-9A-Fa-f]{64}\s+Arvectum Proxy Launcher\.exe$'
+    if (@($sumMatch).Count -ne 1) { throw 'UseExistingPayload portable ZIP checksum manifest is ambiguous.' }
+    $sumHash = ($sumMatch[0].Line -split '\s+')[0]
+    if ($sumHash.ToLowerInvariant() -cne (Hash $exe)) { throw 'UseExistingPayload portable ZIP checksum does not match the installer payload application.' }
+}
 $portableBundle = Join-Path $licenseExtract 'THIRD_PARTY_LICENSES'
 if (-not (Test-Path -LiteralPath (Join-Path $portableBundle 'manifest.json'))) {
     throw 'APL-IP-004: portable ZIP does not contain a verified third-party license bundle.'
@@ -68,7 +101,6 @@ if (-not (Test-Path -LiteralPath $bundlePython)) { throw 'APL-IP-004: canonical 
 if ($LASTEXITCODE -ne 0) { throw 'APL-IP-004: installer third-party license bundle verification failed.' }
 Remove-Item -LiteralPath $licenseExtract -Recurse -Force
 
-function Hash([string]$Path) { (Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash.ToLowerInvariant() }
 function NormalizedVersionInfoValue($Value) {
     # Inno Setup may space-pad string-table fields in the PE resource. Windows
     # Explorer presents the same logical value without that padding, so compare
@@ -108,7 +140,8 @@ $manifest = [ordered]@{
     inno_setup_version_verification='compiler-preprocessor-ver-0x06070100'
     iscc_sha256=$isccHash
 }
-$manifest | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $payload 'build_manifest.json') -Encoding utf8
+$payloadManifestPath = Join-Path $payload 'build_manifest.json'
+$manifest | ConvertTo-Json | Set-Content -LiteralPath $payloadManifestPath -Encoding utf8
 Write-Host "Selected ISCC.exe SHA256=$isccHash; exact Inno Setup $requiredInnoSetupVersion is enforced by the compiler preprocessor contract."
 
 $isccArgs = @(
@@ -145,6 +178,7 @@ if ($env:GITHUB_OUTPUT) {
         "setup_path=$setup" >> $env:GITHUB_OUTPUT
         "setup_name=$(Split-Path $setup -Leaf)" >> $env:GITHUB_OUTPUT
         "setup_sha256=$setupHash" >> $env:GITHUB_OUTPUT
+        "build_manifest_path=$payloadManifestPath" >> $env:GITHUB_OUTPUT
     }
 }
 Write-Host "Installer build PASS: $setup SHA256=$setupHash synthetic=$synthetic"
