@@ -19,10 +19,20 @@ function Get-Sha256([string]$Path) {
 function Test-ExactPath([string]$Candidate, [string]$Expected) {
   if (-not $Candidate -or -not $Expected) { return $false }
   try {
-    $c = $Candidate -replace '\\+$'
-    $e = $Expected -replace '\\+$'
-    return $c -ieq $e
-  } catch { return $false }
+    $resolvedCandidate = (Resolve-Path -LiteralPath $Candidate -ErrorAction Stop).Path -replace '\\+$'
+  } catch {
+    Write-InstallLog "Test-ExactPath RESOLVE_FAILED Candidate='$Candidate'"
+    return $false
+  }
+  try {
+    $resolvedExpected = (Resolve-Path -LiteralPath $Expected -ErrorAction Stop).Path -replace '\\+$'
+  } catch {
+    Write-InstallLog "Test-ExactPath RESOLVE_FAILED Expected='$Expected'"
+    return $false
+  }
+  $result = $resolvedCandidate -ieq $resolvedExpected
+  Write-InstallLog "Test-ExactPath Candidate='$Candidate' Expected='$Expected' ResolvedCandidate='$resolvedCandidate' ResolvedExpected='$resolvedExpected' Match=$result"
+  return $result
 }
 
 function Get-RecoveryBackups {

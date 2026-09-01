@@ -143,7 +143,7 @@ class ReleaseScriptTests(unittest.TestCase):
     def test_uninstaller_closes_only_processes_owned_by_exact_exe_path(self):
         text = self.read("uninstall.ps1")
         self.assertIn("Name='Arvectum Proxy Launcher.exe'", text)
-        self.assertIn("(Normalize-Path $_.ExecutablePath) -ieq $exe", text)
+        self.assertIn("Test-ExactPath $_.ExecutablePath $exe", text)
         self.assertIn("Stop-Process -Id $process.ProcessId", text)
 
     def test_source_helper_bats_target_documents_install(self):
@@ -273,6 +273,28 @@ class ReleaseScriptTests(unittest.TestCase):
             text = self.read(name)
             for pattern in patterns:
                 self.assertNotIn(pattern, text, msg=f"{pattern!r} found in {name}")
+
+    @unittest.skipUnless(HAS_INSTALLER_TRACK, "installer track is not present in portable P0 branch")
+    def test_exact_path_uses_resolve_path_fail_closed(self):
+        files = ["installer/upgrade_helper.ps1", "installer/uninstall_helper.ps1", "uninstall.ps1"]
+        for name in files:
+            text = self.read(name)
+            self.assertIn("function Test-ExactPath", text, msg=f"Test-ExactPath missing in {name}")
+            self.assertIn("Resolve-Path -LiteralPath", text, msg=f"Resolve-Path -LiteralPath missing in {name}")
+            self.assertNotIn("[IO.Path]::GetFullPath", text, msg=f"[IO.Path]::GetFullPath found in {name}")
+            tc = text[text.index("function Test-ExactPath"):]
+            tc = tc[tc.index("{") + 1:]
+            brace = 1
+            for i, ch in enumerate(tc):
+                if ch == '{': brace += 1
+                elif ch == '}': brace -= 1
+                if brace == 0:
+                    tc = tc[:i]
+                    break
+            self.assertIn("Resolve-Path -LiteralPath", tc,
+                          msg=f"Resolve-Path must resolve both paths in {name}")
+            self.assertNotIn("[IO.Path]::GetFullPath", tc,
+                             msg=f"[IO.Path]::GetFullPath found in Test-ExactPath of {name}")
 
     @unittest.skipUnless(HAS_INSTALLER_TRACK, "installer track is not present in portable P0 branch")
     def test_upgrade_helper_waits_for_gui_rollback_under_strict_mode(self):

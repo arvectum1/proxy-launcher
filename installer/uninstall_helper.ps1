@@ -20,10 +20,12 @@ function Write-MaintenanceLog([string]$Message) {
 function Test-ExactPath([string]$Candidate, [string]$Expected) {
   if (-not $Candidate -or -not $Expected) { return $false }
   try {
-    $c = $Candidate -replace '\\+$'
-    $e = $Expected -replace '\\+$'
-    return $c -ieq $e
+    $resolvedCandidate = (Resolve-Path -LiteralPath $Candidate -ErrorAction Stop).Path -replace '\\+$'
   } catch { return $false }
+  try {
+    $resolvedExpected = (Resolve-Path -LiteralPath $Expected -ErrorAction Stop).Path -replace '\\+$'
+  } catch { return $false }
+  return $resolvedCandidate -ieq $resolvedExpected
 }
 
 function Get-RecoveryBackups {

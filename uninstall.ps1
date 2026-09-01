@@ -41,7 +41,13 @@ function Get-Sha256([string]$path) {
 
 function Test-ExactPath([string]$left, [string]$right) {
     if (-not $left -or -not $right) { return $false }
-    try { return ($left -replace '\\+$') -ieq ($right -replace '\\+$') } catch { return $false }
+    try {
+        $resolvedLeft = (Resolve-Path -LiteralPath $left -ErrorAction Stop).Path -replace '\\+$'
+    } catch { return $false }
+    try {
+        $resolvedRight = (Resolve-Path -LiteralPath $right -ErrorAction Stop).Path -replace '\\+$'
+    } catch { return $false }
+    return $resolvedLeft -ieq $resolvedRight
 }
 
 function Get-PathLeaf([string]$Path) {
@@ -338,8 +344,7 @@ Write-Host '       Done.'
 Write-Host '[3/3] Removing files and shortcut...'
 $ownedProcesses = Get-CimInstance Win32_Process -Filter "Name='Arvectum Proxy Launcher.exe'" -ErrorAction SilentlyContinue |
     Where-Object {
-        $_.ExecutablePath -and
-        (Normalize-Path $_.ExecutablePath) -ieq $exe
+        $_.ExecutablePath -and (Test-ExactPath $_.ExecutablePath $exe)
     }
 foreach ($process in $ownedProcesses) {
     Stop-Process -Id $process.ProcessId -Force -ErrorAction Stop
