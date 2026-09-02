@@ -2,6 +2,12 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory)] [string]$CandidateRoot,
+    [Parameter(Mandatory)] [string]$ObservedRunId,
+    [Parameter(Mandatory)] [string]$ObservedRunAttempt,
+    [Parameter(Mandatory)] [string]$ObservedArtifactId,
+    [Parameter(Mandatory)] [string]$ObservedArtifactName,
+    [Parameter(Mandatory)] [string]$ObservedArtifactDigest,
+    [Parameter(Mandatory)] [string]$ObservedSourceCommit,
     [string]$ExpectedHashesPath = (Join-Path $PSScriptRoot 'expected_hashes.json')
 )
 Set-StrictMode -Version Latest
@@ -17,6 +23,13 @@ function Require-Pass([object]$Value, [string]$Name) {
 
 $CandidateRoot = (Resolve-Path -LiteralPath $CandidateRoot).Path
 $expected = Get-Content -LiteralPath $ExpectedHashesPath -Raw | ConvertFrom-Json
+# Outer GitHub artifact identity is independent from the nested candidate files.
+Require-Equal $ObservedRunId ([string]$expected.candidate_run_id) 'observed GitHub run ID'
+Require-Equal $ObservedRunAttempt ([string]$expected.candidate_run_attempt) 'observed GitHub run attempt'
+Require-Equal $ObservedArtifactId ([string]$expected.candidate_artifact_id) 'observed GitHub artifact ID'
+Require-Equal $ObservedArtifactName ([string]$expected.candidate_artifact_name) 'observed GitHub artifact name'
+Require-Equal $ObservedArtifactDigest ([string]$expected.candidate_artifact_digest) 'observed GitHub artifact digest'
+Require-Equal $ObservedSourceCommit ([string]$expected.candidate_source_commit) 'observed GitHub source commit'
 foreach ($property in @('setup','application','build_manifest','upgrade_helper','uninstall_helper','candidate_evidence')) {
     $record = $expected.files.$property
     $path = Join-Path $CandidateRoot $record.filename

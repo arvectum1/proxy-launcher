@@ -20,10 +20,17 @@ class WindowsV1064SealingContractTests(unittest.TestCase):
 
     def test_validator_requires_all_identity_representations(self):
         script = (ROOT / 'tools/bootstrap/apl-win-014/v10.6.4/validate_v10_6_4_candidate.ps1').read_text(encoding='utf-8-sig')
-        for token in ('SHA256SUMS.txt', 'candidate evidence run ID', 'candidate evidence source commit', "'application_sha256'", 'real-stand help probe', 'Candidate installed application identity is not true.'):
+        for token in ('SHA256SUMS.txt', 'candidate evidence run ID', 'candidate evidence source commit', "'application_sha256'", 'real-stand help probe', 'Candidate installed application identity is not true.', 'observed GitHub run ID', 'observed GitHub artifact ID', 'observed GitHub artifact digest'):
             self.assertIn(token, script)
+        for parameter in ('ObservedRunId', 'ObservedRunAttempt', 'ObservedArtifactId', 'ObservedArtifactName', 'ObservedArtifactDigest', 'ObservedSourceCommit'):
+            self.assertIn(f'[Parameter(Mandatory)] [string]${parameter}', script)
         self.assertNotIn('clean_build_windows.ps1', script)
         self.assertNotIn('build_windows_installer.ps1', script)
+
+    def test_v1063_quarantine_is_canonical_and_explicit(self):
+        status = (ROOT / 'tools/bootstrap/apl-win-014/v10.6.4/V10_6_3_QUARANTINE.md').read_text(encoding='utf-8')
+        for token in ('V10.6.3', 'NOT APPROVED FOR REAL-STAND', 'V10.6.4', 'superseded', 'non-identical build'):
+            self.assertIn(token, status)
 
 
 if __name__ == '__main__':
