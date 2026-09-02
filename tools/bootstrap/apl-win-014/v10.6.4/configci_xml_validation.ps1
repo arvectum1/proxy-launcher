@@ -1,4 +1,15 @@
 <# Shared CLM-safe, fail-closed structural validation for generated ConfigCI XML with supplemental semantics. #>
+function Convert-ClmPolicyGuid {
+    [CmdletBinding()]
+    param([string]$Guid = '')
+    Set-StrictMode -Version Latest
+    $ErrorActionPreference = 'Stop'
+    if ($Guid -eq '') { throw 'GUID is required.' }
+    $normalized = $Guid
+    if ($normalized -match '^\{[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}\}$') { $normalized = $normalized.Substring(1, $normalized.Length - 2) }
+    if ($normalized -notmatch '^[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}$') { throw "Malformed policy GUID: $Guid" }
+    return $normalized.ToLowerInvariant()
+}
 function Test-ConfigCiSupplementalXml {
     [CmdletBinding()]
     param(
@@ -14,11 +25,13 @@ function Test-ConfigCiSupplementalXml {
     if ($XmlPath -eq '' -or -not (Test-Path -LiteralPath $XmlPath -PathType Leaf)) { throw 'ConfigCI XML path is required and must exist.' }
     if ($PolicyId -eq '' -or $BasePolicyId -eq '' -or $PolicyFriendlyName -eq '' -or $ExpectedHashRuleFileNames.Count -eq 0) { throw 'ConfigCI XML validator requires policy identity and expected hash-rule filenames.' }
     $lines = @(Get-Content -LiteralPath $XmlPath -Encoding UTF8)
-    $policyIds = @($lines | Where-Object { $_ -match '<PolicyID>\s*([^<\s]+)\s*</PolicyID>' } | ForEach-Object { $matches[1] })
-    $baseIds = @($lines | Where-Object { $_ -match '<BasePolicyID>\s*([^<\s]+)\s*</BasePolicyID>' } | ForEach-Object { $matches[1] })
-    if ($policyIds.Count -ne 1 -or $policyIds[0] -ine $PolicyId) { throw 'Generated ConfigCI XML PolicyID does not exactly match the authored PolicyID.' }
-    if ($baseIds.Count -ne 1 -or $baseIds[0] -ine $BasePolicyId) { throw 'Generated ConfigCI XML BasePolicyID does not exactly match the canonical base.' }
-    if ($policyIds[0] -ieq $baseIds[0]) { throw 'Generated ConfigCI XML PolicyID and BasePolicyID must differ for a supplemental policy.' }
+    $policyIds = @($lines | Where-Object { $_ -match '<PolicyID>\s*([^<\s]+)\s*</PolicyID>' } | ForEach-Object { Convert-ClmPolicyGuid $matches[1] })
+    $baseIds = @($lines | Where-Object { $_ -match '<BasePolicyID>\s*([^<\s]+)\s*</BasePolicyID>' } | ForEach-Object { Convert-ClmPolicyGuid $matches[1] })
+    $normalizedPolicyId = Convert-ClmPolicyGuid $PolicyId
+    $normalizedBaseId = Convert-ClmPolicyGuid $BasePolicyId
+    if ($policyIds.Count -ne 1 -or $policyIds[0] -ne $normalizedPolicyId) { throw 'Generated ConfigCI XML PolicyID does not exactly match the authored PolicyID.' }
+    if ($baseIds.Count -ne 1 -or $baseIds[0] -ne $normalizedBaseId) { throw 'Generated ConfigCI XML BasePolicyID does not exactly match the canonical base.' }
+    if ($policyIds[0] -ceq $baseIds[0]) { throw 'Generated ConfigCI XML PolicyID and BasePolicyID must differ for a supplemental policy.' }
     $hasSettings = $false
     foreach ($line in $lines) { if ($line -match '<Settings>') { $hasSettings = $true } }
     if (-not $hasSettings) { throw 'Generated ConfigCI XML is missing the Settings element required by multiple-policy format.' }
