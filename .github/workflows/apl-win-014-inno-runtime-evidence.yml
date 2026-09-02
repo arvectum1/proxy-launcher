@@ -57,7 +57,8 @@ jobs:
           $installDir = Join-Path $env:RUNNER_TEMP 'inno-runtime-install'
           New-Item -ItemType Directory -Path $evidenceDir -Force | Out-Null
           $outerPath = "$env:RUNNER_TEMP\r3\candidate\Arvectum-Proxy-Launcher-0.2.3-windows-x64-setup.exe"
-          $outer = Start-Process -FilePath $outerPath -ArgumentList "/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /SP- /DIR=\"$installDir\"" -PassThru
+          $arguments = @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/SP-', ('/DIR="' + $installDir + '"'))
+          $outer = Start-Process -FilePath $outerPath -ArgumentList $arguments -PassThru
           $deadline = (Get-Date).AddSeconds(60)
           $captured = $null
           while ((Get-Date) -lt $deadline -and $null -eq $captured) {
