@@ -14,15 +14,22 @@ function Get-Sha256([string]$Path) { $out = & (Join-Path $env:SystemRoot 'System
 if (-not (Test-Path -LiteralPath $CipPath -PathType Leaf)) { throw "CIP not found: $CipPath" }
 if (-not (Test-Path -LiteralPath $AuthoringEvidencePath -PathType Leaf)) { throw "Authoring evidence not found: $AuthoringEvidencePath" }
 $authoring = Get-Content -LiteralPath $AuthoringEvidencePath -Raw | ConvertFrom-Json
+$seal = Get-Content -LiteralPath (Join-Path $scriptDir 'expected_hashes.json') -Raw | ConvertFrom-Json
+if ($authoring.schema -ne 'arvectum.proxy.apl-win-014-v10.6.4-bootstrap-authoring.v3') { throw 'Authoring evidence schema mismatch.' }
+if ($authoring.candidate_source_commit -ne $seal.candidate_source_commit) { throw ('Authoring candidate_source_commit mismatch: expected {0} got {1}.' -f $seal.candidate_source_commit, $authoring.candidate_source_commit) }
+if ($authoring.candidate_artifact_id -ne $seal.candidate_artifact_id) { throw ('Authoring candidate_artifact_id mismatch: expected {0} got {1}.' -f $seal.candidate_artifact_id, $authoring.candidate_artifact_id) }
+if ($authoring.base_policy_id -ne $basePolicyIdText) { throw 'Authoring base_policy_id mismatch.' }
+if ($authoring.supplemental_policy_id -ne $PolicyId) { throw 'Authoring supplemental_policy_id mismatch.' }
+if ($authoring.supplemental_policy_friendly_name -ne $friendlyName) { throw 'Authoring supplemental_policy_friendly_name mismatch.' }
+if ($authoring.supplemental_policy_version -ne '10.0.0.17') { throw 'Authoring supplemental_policy_version mismatch.' }
+if ($authoring.deployment -ne 'NOT PERFORMED') { throw 'Authoring evidence deployment state is not NOT PERFORMED.' }
 $expectedXmlFilename = $authoring.supplemental_policy_xml
 $expectedXmlSha256 = $authoring.supplemental_policy_xml_sha256
 $expectedCipFilename = $authoring.supplemental_policy_cip
 $expectedCipSha256Evidence = $authoring.supplemental_policy_cip_sha256
-if ($authoring.schema -ne 'arvectum.proxy.apl-win-014-v10.6.4-bootstrap-authoring.v3' -or $authoring.base_policy_id -ne $basePolicyIdText -or $authoring.supplemental_policy_id -ne $PolicyId -or $authoring.supplemental_policy_friendly_name -ne $friendlyName -or $authoring.supplemental_policy_version -ne '10.0.0.17' -or $authoring.deployment -ne 'NOT PERFORMED') { throw 'Authoring evidence does not exactly bind the requested deployment.' }
 if ($expectedCipFilename -ne (Split-Path -Leaf $CipPath)) { throw 'Authoring evidence CIP filename does not match supplied CIP.' }
 if ((Get-Sha256 $CipPath) -ine $ExpectedCipSha256) { throw 'CIP hash mismatch.' }
 if ($expectedCipSha256Evidence -ine $ExpectedCipSha256) { throw 'Authoring evidence CIP hash does not match the requested deployment.' }
-$seal = Get-Content -LiteralPath (Join-Path $scriptDir 'expected_hashes.json') -Raw | ConvertFrom-Json
 $xmlPath = Join-Path (Split-Path -Parent $AuthoringEvidencePath) $expectedXmlFilename
 if (Test-Path -LiteralPath $xmlPath -PathType Leaf) {
     $xmlSha256Actual = Get-Sha256 $xmlPath

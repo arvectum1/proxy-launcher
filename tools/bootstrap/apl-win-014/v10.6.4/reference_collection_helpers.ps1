@@ -113,27 +113,70 @@ function Get-ClmCodeIntegrityEvidence {
     }
 }
 
+function Resolve-ClmPolicyEvidence {
+    [CmdletBinding()]
+    param(
+        [object]$CiToolResult = $null,
+        [string]$ExpectedBasePolicyId = '',
+        [string]$ExpectedBaseFriendlyName = '',
+        [string]$ExpectedBaseFriendlyNameAlt = '',
+        [string]$ExpectedBootstrapPolicyId = '',
+        [string]$ExpectedBootstrapFriendlyName = '',
+        [bool]$RequireBootstrap = $true
+    )
+    Set-StrictMode -Version Latest
+    $ErrorActionPreference = 'Stop'
+    if ($null -eq $CiToolResult) { throw 'CiTool result is required.' }
+    if ($ExpectedBasePolicyId -eq '') { throw 'ExpectedBasePolicyId is required.' }
+    if ($ExpectedBaseFriendlyName -eq '') { throw 'ExpectedBaseFriendlyName is required.' }
+    if ($CiToolResult.OperationResult -ne 0) { throw 'CiTool -lp returned non-zero OperationResult.' }
+    $base = @($CiToolResult.Policies | Where-Object { $_.PolicyID -eq $ExpectedBasePolicyId })
+    if ($base.Count -ne 1) { throw "Canonical Lab Base not uniquely present (found $($base.Count))." }
+    if ($base[0].BasePolicyID -ne $ExpectedBasePolicyId) { throw 'Canonical Lab Base BasePolicyID self-reference mismatch.' }
+    if ($base[0].FriendlyName -ne $ExpectedBaseFriendlyName -and ($ExpectedBaseFriendlyNameAlt -eq '' -or $base[0].FriendlyName -ne $ExpectedBaseFriendlyNameAlt)) {
+        if ($base[0].FriendlyName -ne $ExpectedBaseFriendlyName) { throw "Canonical Lab Base FriendlyName mismatch: expected '$ExpectedBaseFriendlyName' got '$($base[0].FriendlyName)'." }
+    }
+    if ($base[0].IsOnDisk -ne $true -or $base[0].IsEnforced -ne $true -or $base[0].IsAuthorized -ne $true) { throw 'Canonical Lab Base is not OnDisk/Enforced/Authorized.' }
+    $null = Test-ClmPolicyOptionsValid -PolicyOptions @($base[0].PolicyOptions) -RequireSupplemental $true -PolicyLabel 'Canonical Lab Base'
+    $baseEvidence = [ordered]@{ policy_id=$base[0].PolicyID; base_policy_id=$base[0].BasePolicyID; friendly_name=$base[0].FriendlyName; is_on_disk=$base[0].IsOnDisk; is_enforced=$base[0].IsEnforced; is_authorized=$base[0].IsAuthorized; policy_options=@($base[0].PolicyOptions); audit_mode=$false }
+    if (-not $RequireBootstrap) {
+        return [ordered]@{ base=$baseEvidence; bootstrap=$null }
+    }
+    if ($ExpectedBootstrapPolicyId -eq '' -or $ExpectedBootstrapFriendlyName -eq '') { throw 'Bootstrap identity parameters required when RequireBootstrap is true.' }
+    $bootstrap = @($CiToolResult.Policies | Where-Object { $_.PolicyID -eq $ExpectedBootstrapPolicyId })
+    if ($bootstrap.Count -ne 1) { throw "Bootstrap policy not uniquely present (found $($bootstrap.Count))." }
+    if ($bootstrap[0].BasePolicyID -ne $ExpectedBasePolicyId) { throw "Bootstrap BasePolicyID mismatch: expected '$ExpectedBasePolicyId' got '$($bootstrap[0].BasePolicyID)'." }
+    if ($bootstrap[0].FriendlyName -ne $ExpectedBootstrapFriendlyName) { throw "Bootstrap FriendlyName mismatch: expected '$ExpectedBootstrapFriendlyName' got '$($bootstrap[0].FriendlyName)'." }
+    if ($bootstrap[0].IsOnDisk -ne $true -or $bootstrap[0].IsEnforced -ne $true -or $bootstrap[0].IsAuthorized -ne $true) { throw 'Bootstrap policy is not OnDisk/Enforced/Authorized.' }
+    $bootstrapOptions = @($bootstrap[0].PolicyOptions)
+    if ($bootstrapOptions.Count -gt 0) { $null = Test-ClmPolicyOptionsValid -PolicyOptions $bootstrapOptions -RequireSupplemental $false -PolicyLabel 'Bootstrap supplemental policy' }
+    $bootstrapEvidence = [ordered]@{ policy_id=$bootstrap[0].PolicyID; base_policy_id=$bootstrap[0].BasePolicyID; friendly_name=$bootstrap[0].FriendlyName; version=$bootstrap[0].Version; is_on_disk=$bootstrap[0].IsOnDisk; is_enforced=$bootstrap[0].IsEnforced; is_authorized=$bootstrap[0].IsAuthorized; policy_options=$bootstrapOptions; audit_mode=$false }
+    return [ordered]@{ base=$baseEvidence; bootstrap=$bootstrapEvidence }
+}
+
+function Get-ClmBasePolicyEvidence {
+    [CmdletBinding()]
+    param([string]$ExpectedBasePolicyId = '', [string]$ExpectedBaseFriendlyName = '')
+    Set-StrictMode -Version Latest
+    $ErrorActionPreference = 'Stop'
+    if ($ExpectedBasePolicyId -eq '') { throw 'ExpectedBasePolicyId is required.' }
+    if ($ExpectedBaseFriendlyName -eq '') { throw 'ExpectedBaseFriendlyName is required.' }
+    if (-not (Get-Command CiTool.exe -ErrorAction SilentlyContinue)) { throw 'CiTool.exe not found.' }
+    $result = & CiTool.exe -lp -json 2>$null | ConvertFrom-Json
+    return Resolve-ClmPolicyEvidence -CiToolResult $result -ExpectedBasePolicyId $ExpectedBasePolicyId -ExpectedBaseFriendlyName $ExpectedBaseFriendlyName -RequireBootstrap $false
+}
+
 function Get-ClmPolicyEvidence {
     [CmdletBinding()]
-    param([string]$ExpectedBasePolicyId = '', [string]$ExpectedBootstrapPolicyId = '', [string]$ExpectedBootstrapFriendlyName = '')
+    param([string]$ExpectedBasePolicyId = '', [string]$ExpectedBaseFriendlyName = '', [string]$ExpectedBootstrapPolicyId = '', [string]$ExpectedBootstrapFriendlyName = '')
     Set-StrictMode -Version Latest
     $ErrorActionPreference = 'Stop'
     if ($ExpectedBasePolicyId -eq '' -or $ExpectedBootstrapPolicyId -eq '') { throw 'Expected policy IDs are required.' }
+    if ($ExpectedBaseFriendlyName -eq '') { throw 'ExpectedBaseFriendlyName is required.' }
+    if ($ExpectedBootstrapFriendlyName -eq '') { throw 'ExpectedBootstrapFriendlyName is required.' }
     if (-not (Get-Command CiTool.exe -ErrorAction SilentlyContinue)) { throw 'CiTool.exe not found.' }
     $result = & CiTool.exe -lp -json 2>$null | ConvertFrom-Json
-    if ($result.OperationResult -ne 0) { throw 'CiTool -lp returned non-zero OperationResult.' }
-    $base = @($result.Policies | Where-Object { $_.PolicyID -eq $ExpectedBasePolicyId })
-    $bootstrap = @($result.Policies | Where-Object { $_.PolicyID -eq $ExpectedBootstrapPolicyId })
-    if ($base.Count -ne 1) { throw "Canonical Lab Base not uniquely present (found $($base.Count))." }
-    if ($bootstrap.Count -ne 1) { throw "Bootstrap policy not uniquely present (found $($bootstrap.Count))." }
-    if ($bootstrap[0].IsOnDisk -ne $true -or $bootstrap[0].IsEnforced -ne $true -or $bootstrap[0].IsAuthorized -ne $true) { throw 'Bootstrap policy is not OnDisk/Enforced/Authorized.' }
-    Test-ClmPolicyOptionsValid -PolicyOptions @($base[0].PolicyOptions) -RequireSupplemental $true -PolicyLabel 'Canonical Lab Base'
-    $bootstrapOptions = @($bootstrap[0].PolicyOptions)
-    if ($bootstrapOptions.Count -gt 0) { Test-ClmPolicyOptionsValid -PolicyOptions $bootstrapOptions -RequireSupplemental $false -PolicyLabel 'Bootstrap supplemental policy' }
-    return [ordered]@{
-        base=[ordered]@{ policy_id=$base[0].PolicyID; base_policy_id=$base[0].BasePolicyID; friendly_name=$base[0].FriendlyName; is_on_disk=$base[0].IsOnDisk; is_enforced=$base[0].IsEnforced; is_authorized=$base[0].IsAuthorized; policy_options=@($base[0].PolicyOptions); audit_mode=$false }
-        bootstrap=[ordered]@{ policy_id=$bootstrap[0].PolicyID; base_policy_id=$bootstrap[0].BasePolicyID; friendly_name=$bootstrap[0].FriendlyName; version=$bootstrap[0].Version; is_on_disk=$bootstrap[0].IsOnDisk; is_enforced=$bootstrap[0].IsEnforced; is_authorized=$bootstrap[0].IsAuthorized; policy_options=$bootstrapOptions; audit_mode=$false }
-    }
+    return Resolve-ClmPolicyEvidence -CiToolResult $result -ExpectedBasePolicyId $ExpectedBasePolicyId -ExpectedBaseFriendlyName $ExpectedBaseFriendlyName -ExpectedBootstrapPolicyId $ExpectedBootstrapPolicyId -ExpectedBootstrapFriendlyName $ExpectedBootstrapFriendlyName -RequireBootstrap $true
 }
 
 function Compare-ClmInventory {
@@ -174,7 +217,7 @@ function Test-ClmBasePolicyInvariant {
     if ($Policy.is_on_disk -ne $true) { throw 'Policy is not OnDisk.' }
     if ($Policy.is_enforced -ne $true) { throw 'Policy is not Enforced.' }
     if ($Policy.is_authorized -ne $true) { throw 'Policy is not Authorized.' }
-    Test-ClmPolicyOptionsValid -PolicyOptions @($Policy.policy_options) -RequireSupplemental $true -PolicyLabel $ExpectedFriendlyName
+    $null = Test-ClmPolicyOptionsValid -PolicyOptions @($Policy.policy_options) -RequireSupplemental $true -PolicyLabel $ExpectedFriendlyName
     return $true
 }
 

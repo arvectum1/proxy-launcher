@@ -9,6 +9,7 @@ $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 . (Join-Path $scriptDir 'configci_xml_validation.ps1')
 . (Join-Path $scriptDir 'reference_collection_helpers.ps1')
 $basePolicyIdText = 'dc1c604c-46ea-40b7-9f47-cf582b225d5e'
+$baseFriendlyName = 'Arvectum APL-WIN-014 Lab Base'
 $policyFriendlyName = 'Arvectum APL-WIN-014 Harness V10.6.4 Bootstrap'
 $policyVersion = '10.0.0.17'
 if ([string]::IsNullOrWhiteSpace($CandidateRoot)) { throw 'CandidateRoot is required; this script never prompts.' }
@@ -29,8 +30,8 @@ foreach ($entry in @($hashes.files.setup, $hashes.files.application, $hashes.fil
     if ((Get-Sha256 $path) -ine $entry.sha256) { throw "Sealed candidate hash mismatch: $($entry.filename)" }
 }
 foreach ($command in @('New-CIPolicy','Set-CIPolicyIdInfo','Set-CIPolicyVersion','ConvertFrom-CIPolicy','CiTool.exe')) { if (-not (Get-Command $command -ErrorAction SilentlyContinue)) { throw "Required command not found: $command" } }
-$policyEvi = Get-ClmPolicyEvidence -ExpectedBasePolicyId $basePolicyIdText -ExpectedBootstrapPolicyId $hashes.base_policy_id -ExpectedBootstrapFriendlyName $policyFriendlyName
-Test-ClmBasePolicyInvariant -Policy $policyEvi.base -ExpectedPolicyId $basePolicyIdText -ExpectedBasePolicyId $basePolicyIdText -ExpectedFriendlyName 'Arvectum APL-WIN-014 Lab Base'
+$baseEvi = Get-ClmBasePolicyEvidence -ExpectedBasePolicyId $basePolicyIdText -ExpectedBaseFriendlyName $baseFriendlyName
+Test-ClmBasePolicyInvariant -Policy $baseEvi.base -ExpectedPolicyId $basePolicyIdText -ExpectedBasePolicyId $basePolicyIdText -ExpectedFriendlyName $baseFriendlyName
 $outDir = Join-Path $scriptDir ("v10.6.4-authoring-" + (Get-Date -Format 'yyyyMMdd-HHmmss'))
 $scanDir = Join-Path $outDir 'scan'
 New-Item -ItemType Directory -Path $scanDir -Force | Out-Null

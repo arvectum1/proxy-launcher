@@ -69,11 +69,13 @@ $evidence = [ordered]@{
     base_policy_id=$basePolicyIdText
     base_policy_friendly_name=$basePolicy.friendly_name
     base_policy_options=$basePolicy.policy_options
-    bootstrap_policy_id=$BootstrapPolicyId
-    bootstrap_policy_friendly_name=$friendlyName
+    bootstrap_policy_id=$bootstrapPolicy.policy_id
+    bootstrap_policy_base_id=$bootstrapPolicy.base_policy_id
+    bootstrap_policy_friendly_name=$bootstrapPolicy.friendly_name
     bootstrap_policy_version=$bootstrapPolicy.version
     bootstrap_policy_enforced=$bootstrapPolicy.is_enforced
     bootstrap_policy_authorized=$bootstrapPolicy.is_authorized
+    bootstrap_policy_options=$bootstrapPolicy.policy_options
     mandatory_repair_cache=[ordered]@{ filename=$seal.repair_cache_filename; sha256=$seal.files.setup.sha256; size=(Get-Item -LiteralPath $repair).Length }
     sealed_install_files=$sealedInstallFiles
     install_root=$InstallRoot

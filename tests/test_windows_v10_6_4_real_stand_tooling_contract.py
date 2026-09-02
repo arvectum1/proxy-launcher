@@ -26,6 +26,9 @@ class WindowsV1064RealStandToolingContractTests(unittest.TestCase):
             'test_clm_runspace.ps1',
             'test_reference_collection_helpers.ps1',
             'test_audit_mode_rejection.ps1',
+            'test_pre_authoring_base_only.ps1',
+            'test_bootstrap_policy_identity.ps1',
+            'test_deploy_authoring_provenance.ps1',
             'expected_hashes.json',
             'SEALING_ONLY_CLASSIFICATION.md',
         }
@@ -157,7 +160,8 @@ class WindowsV1064RealStandToolingContractTests(unittest.TestCase):
         for func in ('Get-ClmRelativePath', 'Test-ClmPolicyOptionsValid', 'Get-ClmOptionalRegistryValue',
                       'Get-ClmNetstatTcpListeners', 'Get-ClmProcessEvidence', 'Get-ClmUninstallerEvidence',
                       'Get-ClmCodeIntegrityEvidence', 'Get-ClmPolicyEvidence', 'Compare-ClmInventory',
-                      'Test-ClmAuditModeRejection', 'Test-ClmBasePolicyInvariant', 'Get-ClmLiveInventory'):
+                      'Test-ClmAuditModeRejection', 'Test-ClmBasePolicyInvariant', 'Get-ClmLiveInventory',
+                      'Resolve-ClmPolicyEvidence', 'Get-ClmBasePolicyEvidence'):
             self.assertIn(f'function {func}', helpers, f'Missing helper function: {func}')
 
     def test_authoring_evidence_includes_xml_identity(self):
@@ -225,6 +229,69 @@ class WindowsV1064RealStandToolingContractTests(unittest.TestCase):
         self.assertIn('Get-ClmUninstallerEvidence', capture)
         self.assertIn('InstallRoot', capture)
         self.assertIn('unins*.exe', (TOOLS / 'reference_collection_helpers.ps1').read_text(encoding='utf-8-sig'))
+
+    def test_authoring_v3_schema_fields_are_required(self):
+        prepare = (TOOLS / 'prepare_v10_6_4_bootstrap_on_demo.ps1').read_text(encoding='utf-8-sig')
+        self.assertIn('bootstrap-authoring.v3', prepare)
+        self.assertIn('candidate_source_commit', prepare)
+        self.assertIn('candidate_artifact_id', prepare)
+        self.assertIn('supplemental_policy_xml', prepare)
+        self.assertIn('supplemental_policy_xml_sha256', prepare)
+        self.assertIn('supplemental_policy_cip', prepare)
+        self.assertIn('supplemental_policy_cip_sha256', prepare)
+        self.assertIn('supplemental_policy_friendly_name', prepare)
+        self.assertIn('supplemental_policy_version', prepare)
+        self.assertIn('deployment', prepare)
+        self.assertIn('NOT PERFORMED', prepare)
+
+    def test_deploy_validates_candidate_source_commit(self):
+        install = (TOOLS / 'install_v10_6_4_bootstrap_on_demo.ps1').read_text(encoding='utf-8-sig')
+        self.assertIn('candidate_source_commit', install)
+        self.assertIn('seal.candidate_source_commit', install)
+        self.assertIn('Authoring candidate_source_commit mismatch', install)
+
+    def test_deploy_validates_candidate_artifact_id(self):
+        install = (TOOLS / 'install_v10_6_4_bootstrap_on_demo.ps1').read_text(encoding='utf-8-sig')
+        self.assertIn('candidate_artifact_id', install)
+        self.assertIn('seal.candidate_artifact_id', install)
+        self.assertIn('Authoring candidate_artifact_id mismatch', install)
+
+    def test_deploy_validates_all_authoring_fields_before_mutation(self):
+        install = (TOOLS / 'install_v10_6_4_bootstrap_on_demo.ps1').read_text(encoding='utf-8-sig')
+        self.assertIn('Authoring evidence schema mismatch', install)
+        self.assertIn('Authoring base_policy_id mismatch', install)
+        self.assertIn('Authoring supplemental_policy_id mismatch', install)
+        self.assertIn('Authoring supplemental_policy_friendly_name mismatch', install)
+        self.assertIn('Authoring supplemental_policy_version mismatch', install)
+        self.assertIn('Authoring evidence deployment state is not NOT PERFORMED', install)
+        self.assertIn('Authoring evidence CIP hash does not match', install)
+        self.assertIn('XML SHA256 does not match authoring evidence', install)
+
+    def test_prepare_script_uses_base_only_validation(self):
+        prepare = (TOOLS / 'prepare_v10_6_4_bootstrap_on_demo.ps1').read_text(encoding='utf-8-sig')
+        self.assertIn('Get-ClmBasePolicyEvidence', prepare)
+        self.assertIn('Test-ClmBasePolicyInvariant', prepare)
+        self.assertNotIn('Get-ClmPolicyEvidence', prepare)
+
+    def test_capture_records_observed_bootstrap_identity(self):
+        capture = (TOOLS / 'capture_v10_6_4_post_install_reference.ps1').read_text(encoding='utf-8-sig')
+        self.assertIn('bootstrap_policy_id=$bootstrapPolicy.policy_id', capture)
+        self.assertIn('bootstrap_policy_base_id=$bootstrapPolicy.base_policy_id', capture)
+        self.assertIn('bootstrap_policy_friendly_name=$bootstrapPolicy.friendly_name', capture)
+        self.assertIn('bootstrap_policy_version=$bootstrapPolicy.version', capture)
+        self.assertIn('bootstrap_policy_options=$bootstrapPolicy.policy_options', capture)
+
+    def test_resolve_clm_policy_evidence_enforces_bootstrap_friendly_name(self):
+        helpers = (TOOLS / 'reference_collection_helpers.ps1').read_text(encoding='utf-8-sig')
+        self.assertIn('ExpectedBootstrapFriendlyName', helpers)
+        self.assertIn('Bootstrap FriendlyName mismatch', helpers)
+        self.assertIn('Bootstrap BasePolicyID mismatch', helpers)
+        self.assertIn('Bootstrap policy not uniquely present', helpers)
+
+    def test_new_behavioral_tests_exist(self):
+        self.assertTrue((TOOLS / 'test_pre_authoring_base_only.ps1').exists())
+        self.assertTrue((TOOLS / 'test_bootstrap_policy_identity.ps1').exists())
+        self.assertTrue((TOOLS / 'test_deploy_authoring_provenance.ps1').exists())
 
 
 if __name__ == '__main__':
