@@ -38,14 +38,15 @@ Copy-Item -LiteralPath (Join-Path $CandidateRoot $hashes.files.setup.filename) -
 Copy-Item -LiteralPath (Join-Path $CandidateRoot $hashes.files.application.filename) -Destination $scanDir -Force
 $xml = Join-Path $outDir 'Arvectum-APL-WIN-014-V10.6.4-Bootstrap.xml'
 New-CIPolicy -MultiplePolicyFormat -ScanPath $scanDir -UserPEs -NoScript -NoShadowCopy -FilePath $xml -Level Hash | Out-Null
-Set-CIPolicyIdInfo -FilePath $xml -ResetPolicyID -PolicyName $policyFriendlyName -SupplementsBasePolicyID ([guid]$basePolicyIdText) | Out-Null
+Set-CIPolicyIdInfo -FilePath $xml -ResetPolicyID -PolicyName $policyFriendlyName -SupplementsBasePolicyID $basePolicyIdText | Out-Null
 Set-CIPolicyVersion -FilePath $xml -Version $policyVersion | Out-Null
-$policyId = (Select-String -Path $xml -Pattern '<PolicyID>\s*([^<]+)\s*</PolicyID>' | Select-Object -First 1).Matches.Groups[1].Value
-if ([string]::IsNullOrWhiteSpace($policyId)) { throw 'Generated policy has no PolicyID.' }
-Test-ConfigCiSupplementalXml -XmlPath $xml -PolicyId $policyId -BasePolicyId $basePolicyIdText -PolicyFriendlyName $policyFriendlyName -ExpectedHashRuleFileNames @($hashes.files.application.filename, $hashes.files.setup.filename) | Out-Null
+$policyId = ''
+foreach ($line in Get-Content -LiteralPath $xml -Encoding UTF8) { if ($line -match '<PolicyID>\s*([^<]+)\s*</PolicyID>') { $policyId = $matches[1] } }
+if ($policyId -eq '') { throw 'Generated policy has no PolicyID.' }
+Test-ConfigCiSupplementalXml -XmlPath $xml -PolicyId $policyId -BasePolicyId $basePolicyIdText -PolicyFriendlyName $policyFriendlyName -ExpectedPolicyVersion $policyVersion -ExpectedHashRuleFileNames @($hashes.files.application.filename, $hashes.files.setup.filename) | Out-Null
 $cip = Join-Path $outDir (("{" + ($policyId -replace '[{}]','') + "}.cip"))
 ConvertFrom-CIPolicy -XmlFilePath $xml -BinaryFilePath $cip
 if (-not (Test-Path -LiteralPath $cip -PathType Leaf)) { throw 'ConfigCI did not create the binary supplemental policy.' }
-[ordered]@{ schema='arvectum.proxy.apl-win-014-v10.6.4-bootstrap-authoring.v1'; candidate_source_commit=$hashes.candidate_source_commit; candidate_artifact_id=$hashes.candidate_artifact_id; base_policy_id=$basePolicyIdText; supplemental_policy_id=$policyId; supplemental_policy_cip=(Split-Path -Leaf $cip); deployment='NOT PERFORMED' } | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $outDir 'authoring-evidence.json') -Encoding UTF8
+[ordered]@{ schema='arvectum.proxy.apl-win-014-v10.6.4-bootstrap-authoring.v2'; candidate_source_commit=$hashes.candidate_source_commit; candidate_artifact_id=$hashes.candidate_artifact_id; base_policy_id=$basePolicyIdText; supplemental_policy_id=$policyId; supplemental_policy_friendly_name=$policyFriendlyName; supplemental_policy_version=$policyVersion; supplemental_policy_cip=(Split-Path -Leaf $cip); supplemental_policy_cip_sha256=(Get-Sha256 $cip); deployment='NOT PERFORMED' } | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $outDir 'authoring-evidence.json') -Encoding UTF8
 "$(Get-Sha256 $xml)  $(Split-Path -Leaf $xml)`n$(Get-Sha256 $cip)  $(Split-Path -Leaf $cip)" | Set-Content -LiteralPath (Join-Path $outDir 'SHA256SUMS.txt') -Encoding ASCII
 Write-Host "AUTHORING COMPLETE: $outDir (deployment not performed)"

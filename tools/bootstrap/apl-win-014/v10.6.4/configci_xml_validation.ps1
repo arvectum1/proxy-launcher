@@ -1,4 +1,4 @@
-<# Shared fail-closed structural validation for generated ConfigCI supplemental XML. #>
+<# Shared CLM-safe, fail-closed structural validation for generated ConfigCI XML. #>
 function Test-ConfigCiSupplementalXml {
     [CmdletBinding()]
     param(
@@ -6,42 +6,44 @@ function Test-ConfigCiSupplementalXml {
         [string]$PolicyId = '',
         [string]$BasePolicyId = '',
         [string]$PolicyFriendlyName = '',
+        [string]$ExpectedPolicyVersion = '',
         [string[]]$ExpectedHashRuleFileNames = @()
     )
     Set-StrictMode -Version Latest
     $ErrorActionPreference = 'Stop'
-    if ([string]::IsNullOrWhiteSpace($XmlPath) -or -not (Test-Path -LiteralPath $XmlPath -PathType Leaf)) { throw 'ConfigCI XML path is required and must exist.' }
-    if ([string]::IsNullOrWhiteSpace($PolicyId) -or [string]::IsNullOrWhiteSpace($BasePolicyId) -or [string]::IsNullOrWhiteSpace($PolicyFriendlyName) -or $ExpectedHashRuleFileNames.Count -eq 0) { throw 'ConfigCI XML validator requires policy identity and expected hash-rule filenames.' }
-    [xml]$document = Get-Content -LiteralPath $XmlPath -Raw -Encoding UTF8
-    $policyNodes = @($document.SelectNodes("//*[local-name()='PolicyID']") | ForEach-Object { $_.InnerText.Trim() })
-    $baseNodes = @($document.SelectNodes("//*[local-name()='BasePolicyID']") | ForEach-Object { $_.InnerText.Trim() })
-    if ($policyNodes.Count -ne 1 -or $policyNodes[0] -ine $PolicyId) { throw 'Generated ConfigCI XML PolicyID does not exactly match the authored PolicyID.' }
-    if ($baseNodes.Count -ne 1 -or $baseNodes[0] -ine $BasePolicyId) { throw 'Generated ConfigCI XML BasePolicyID does not exactly match the canonical base.' }
-    if ((Get-Content -LiteralPath $XmlPath -Raw -Encoding UTF8) -notlike "*$PolicyFriendlyName*") { throw 'Generated ConfigCI XML does not contain the expected policy friendly name.' }
-    $rules = @($document.SelectNodes("//*[local-name()='Allow'][@Hash]"))
-    $refs = @($document.SelectNodes("//*[local-name()='SigningScenario' and @Value='12']//*[local-name()='FileRuleRef']"))
-    if ($rules.Count -ne ($ExpectedHashRuleFileNames.Count * 4) -or $refs.Count -ne $rules.Count) { throw 'Generated ConfigCI XML has an unexpected hash-rule or user-mode FileRuleRef count.' }
+    if ($XmlPath -eq '' -or -not (Test-Path -LiteralPath $XmlPath -PathType Leaf)) { throw 'ConfigCI XML path is required and must exist.' }
+    if ($PolicyId -eq '' -or $BasePolicyId -eq '' -or $PolicyFriendlyName -eq '' -or $ExpectedHashRuleFileNames.Count -eq 0) { throw 'ConfigCI XML validator requires policy identity and expected hash-rule filenames.' }
+    $lines = @(Get-Content -LiteralPath $XmlPath -Encoding UTF8)
+    $policyIds = @($lines | Where-Object { $_ -match '<PolicyID>\s*([^<\s]+)\s*</PolicyID>' } | ForEach-Object { $matches[1] })
+    $baseIds = @($lines | Where-Object { $_ -match '<BasePolicyID>\s*([^<\s]+)\s*</BasePolicyID>' } | ForEach-Object { $matches[1] })
+    if ($policyIds.Count -ne 1 -or $policyIds[0] -ine $PolicyId) { throw 'Generated ConfigCI XML PolicyID does not exactly match the authored PolicyID.' }
+    if ($baseIds.Count -ne 1 -or $baseIds[0] -ine $BasePolicyId) { throw 'Generated ConfigCI XML BasePolicyID does not exactly match the canonical base.' }
+    if (@($lines | Where-Object { $_ -like "*$PolicyFriendlyName*" }).Count -eq 0) { throw 'Generated ConfigCI XML does not contain the expected policy friendly name.' }
+    if ($ExpectedPolicyVersion -ne '' -and @($lines | Where-Object { $_ -match '<VersionEx>\s*([^<\s]+)\s*</VersionEx>' -and $matches[1] -eq $ExpectedPolicyVersion }).Count -ne 1) { throw 'Generated ConfigCI XML does not contain the expected policy version.' }
+    $rules = @($lines | Where-Object { $_ -match '<Allow\s+[^>]*\bID="[^"]+"[^>]*\bFriendlyName="[^"]+"[^>]*\bHash="[^"]+"' })
+    $refs = @()
+    $allRefs = @()
+    $inUserScenario = $false
+    foreach ($line in $lines) {
+        if ($line -match '<SigningScenario\b[^>]*\bValue="12"') { $inUserScenario = $true }
+        if ($line -match '<FileRuleRef\s+RuleID="([^"]+)"') { $allRefs += $matches[1]; if ($inUserScenario) { $refs += $matches[1] } }
+        if ($line -match '</SigningScenario>') { $inUserScenario = $false }
+    }
+    if ($rules.Count -ne ($ExpectedHashRuleFileNames.Count * 4) -or $refs.Count -ne $rules.Count -or $allRefs.Count -ne $refs.Count) { throw 'Generated ConfigCI XML has an unexpected hash-rule or user-mode FileRuleRef count.' }
     $ruleIds = @()
+    $ruleNames = @()
     foreach ($rule in $rules) {
-        $id = [string]$rule.GetAttribute('ID')
-        $hash = [string]$rule.GetAttribute('Hash')
-        if ([string]::IsNullOrWhiteSpace($id) -or [string]::IsNullOrWhiteSpace($hash)) { throw 'Generated ConfigCI XML has a hash rule without ID or Hash.' }
-        $ruleIds += $id
+        if ($rule -notmatch '\bID="([^"]+)"') { throw 'Generated ConfigCI XML has a hash rule without ID.' }
+        $ruleIds += $matches[1]
+        if ($rule -notmatch '\bFriendlyName="([^"]+)"') { throw 'Generated ConfigCI XML has a hash rule without FriendlyName.' }
+        $ruleNames += $matches[1]
     }
-    if (@($ruleIds | Select-Object -Unique).Count -ne $ruleIds.Count) { throw 'Generated ConfigCI XML has duplicate hash-rule IDs.' }
-    $refIds = @($refs | ForEach-Object { [string]$_.GetAttribute('RuleID') })
-    if (@($refIds | Select-Object -Unique).Count -ne $refIds.Count -or @($refIds | Where-Object { $_ -notin $ruleIds }).Count -ne 0 -or @($ruleIds | Where-Object { $_ -notin $refIds }).Count -ne 0) { throw 'Generated ConfigCI XML FileRuleRefs do not exactly bind every hash rule.' }
+    if (@($ruleIds | Sort-Object -Unique).Count -ne $ruleIds.Count -or @($refs | Sort-Object -Unique).Count -ne $refs.Count -or @($refs | Where-Object { $_ -notin $ruleIds }).Count -ne 0 -or @($ruleIds | Where-Object { $_ -notin $refs }).Count -ne 0) { throw 'Generated ConfigCI XML FileRuleRefs do not exactly bind every hash rule.' }
     foreach ($fileName in $ExpectedHashRuleFileNames) {
-        $fileRules = @($rules | Where-Object { $_.GetAttribute('FriendlyName') -like "$fileName Hash *" })
-        $variants = @($fileRules | ForEach-Object { $_.GetAttribute('FriendlyName').Substring($fileName.Length + 6) })
-        if ($fileRules.Count -ne 4 -or @($variants | Sort-Object -Unique) -join '|' -ne 'Page Sha1|Page Sha256|Sha1|Sha256') { throw "Generated ConfigCI XML does not contain exactly four hash variants for $fileName." }
+        $variants = @($ruleNames | Where-Object { $_ -like "$fileName Hash *" } | ForEach-Object { $_ -replace '^.* Hash ', '' } | Sort-Object -Unique)
+        if ($variants.Count -ne 4 -or @($variants | Where-Object { $_ -notin @('Sha1', 'Sha256', 'Page Sha1', 'Page Sha256') }).Count -ne 0) { throw "Generated ConfigCI XML does not contain exactly four hash variants for $fileName." }
     }
-    foreach ($rule in $rules) {
-        $known = $false
-        foreach ($fileName in $ExpectedHashRuleFileNames) { if ($rule.GetAttribute('FriendlyName') -like "$fileName Hash *") { $known = $true } }
-        if (-not $known) { throw 'Generated ConfigCI XML contains an unexpected hash-rule file.' }
-    }
-    $signers = @($document.SelectNodes("//*[local-name()='Signers']"))
-    if (@($signers | Where-Object { $_.ChildNodes.Count -ne 0 }).Count -ne 0) { throw 'Generated ConfigCI XML contains a signer-based trust path.' }
+    if (@($ruleNames | Where-Object { $known = $false; foreach ($fileName in $ExpectedHashRuleFileNames) { if ($_ -like "$fileName Hash *") { $known = $true } }; -not $known }).Count -ne 0) { throw 'Generated ConfigCI XML contains an unexpected hash-rule file.' }
+    if (@($lines | Where-Object { $_ -match '<Signer\b|<CertRoot\b|<CertPublisher\b' }).Count -ne 0) { throw 'Generated ConfigCI XML contains a signer-based trust path.' }
     $true
 }

@@ -17,8 +17,10 @@ class WindowsV1064RealStandToolingContractTests(unittest.TestCase):
             'prepare_v10_7_final_on_demo.ps1',
             'retire_v10_6_2_bootstrap_on_demo.ps1',
             'configci_xml_validation.ps1',
+            'checksum_validation.ps1',
             'test_citool_schema.ps1',
             'test_configci_xml_structure.ps1',
+            'test_checksum_validation.ps1',
             'test_clm_contract.ps1',
             'test_clm_runspace.ps1',
             'expected_hashes.json',
@@ -86,11 +88,40 @@ class WindowsV1064RealStandToolingContractTests(unittest.TestCase):
         v107 = (TOOLS / 'prepare_v10_7_final_on_demo.ps1').read_text(encoding='utf-8-sig')
         self.assertIn('Captured live installation tree no longer exactly matches the reference inventory.', v107)
         self.assertIn('Reference capture manifest hash does not match its checksum evidence.', v107)
+        self.assertIn('ExpectedPolicyVersion', validator)
+        self.assertNotIn('[xml]', validator)
+        self.assertNotIn('.SelectNodes(', validator)
+        self.assertNotIn('.GetAttribute(', validator)
+        checksum = (TOOLS / 'checksum_validation.ps1').read_text(encoding='utf-8-sig')
+        self.assertIn('Get-ChecksumEvidenceHash', checksum)
+        self.assertIn('Get-ChecksumEvidenceHash', v107)
+
+    def test_cutover_evidence_and_base_options_are_fail_closed(self):
+        install = (TOOLS / 'install_v10_6_4_bootstrap_on_demo.ps1').read_text(encoding='utf-8-sig')
+        post_deploy = (TOOLS / 'post_deploy_v10_6_4_verification.ps1').read_text(encoding='utf-8-sig')
+        capture = (TOOLS / 'capture_v10_6_4_post_install_reference.ps1').read_text(encoding='utf-8-sig')
+        retirement = (TOOLS / 'retire_v10_6_2_bootstrap_on_demo.ps1').read_text(encoding='utf-8-sig')
+        for text in (install, post_deploy, capture, retirement):
+            self.assertIn('Enabled:Allow Supplemental Policies', text)
+            self.assertIn('Canonical Lab Base validation failed', text)
+        self.assertIn('AuthoringEvidencePath', install)
+        self.assertIn('supplemental_policy_cip_sha256', install)
+        self.assertIn('V1062AuthoringEvidencePath', retirement)
+        self.assertIn('hard-bound to canonical V10.6.2 authoring evidence', retirement)
+        self.assertIn('capture_mode', capture)
+        self.assertIn('base_policy_options', capture)
+
+    def test_static_clm_contract_covers_real_paths_and_forbidden_methods(self):
+        contract = (TOOLS / 'test_clm_contract.ps1').read_text(encoding='utf-8-sig')
+        self.assertIn("$_.Name -notlike 'test_*'", contract)
+        for forbidden in (r'\.SelectNodes\(', r'\.GetAttribute\(', r'\.Trim\(', r'\.Substring\(', r'\[guid\]'):
+            self.assertIn(forbidden, contract)
 
     def test_fixture_set_is_complete(self):
         source_fixtures = {path.name for path in (ROOT / 'tools/bootstrap/apl-win-014/v10.6.3/fixtures').iterdir()}
         target_fixtures = {path.name for path in (TOOLS / 'fixtures').iterdir()}
-        self.assertEqual(target_fixtures, source_fixtures)
+        self.assertTrue(source_fixtures.issubset(target_fixtures))
+        self.assertTrue({'sha256sums_reference_capture.txt', 'sha256sums_malformed.txt'}.issubset(target_fixtures))
 
 
 if __name__ == '__main__':
