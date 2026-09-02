@@ -14,6 +14,8 @@ jobs:
     runs-on: windows-latest
     timeout-minutes: 10
     steps:
+      - uses: actions/checkout@v4
+
       - name: Download sealed R3 transport
         env:
           GH_TOKEN: ${{ github.token }}
@@ -108,7 +110,11 @@ jobs:
             product_rebuilt=$false
             candidate_rerun=$false
           } | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $evidenceDir 'runtime-capture-evidence.json') -Encoding UTF8
-          if (-not $staticEqualsBehavioral) { throw 'Official Setup.e32 does not byte-equal the observed runtime; deterministic sealed-setup extraction is required.' }
+          python tools/bootstrap/apl-win-014/extract_inno_6_7_1_runtime.py $outerPath (Join-Path $evidenceDir 'static-runtime.exe') --evidence (Join-Path $evidenceDir 'runtime-static-evidence.json')
+          $staticDerived = Get-Item -LiteralPath (Join-Path $evidenceDir 'static-runtime.exe')
+          $staticDerivedHash = (Get-FileHash -LiteralPath $staticDerived.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($staticDerived.Length -ne 4473344 -or $staticDerivedHash -ne 'b37446a70e4ce841b58c1fcc35edd1295769184e5e9206188a3949ed02dc76d8') { throw 'Static sealed-setup derivation does not match the accepted behavioral anchor.' }
+          if ($staticDerived.Length -ne $runtime.Length -or $staticDerivedHash -ne $runtimeHash) { throw 'Static sealed-setup derivation does not byte-equal behavioral runtime capture.' }
           Remove-Item -LiteralPath $installDir -Recurse -Force -ErrorAction SilentlyContinue
 
       - name: Upload runtime evidence
