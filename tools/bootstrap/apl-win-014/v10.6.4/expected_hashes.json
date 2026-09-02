@@ -12,6 +12,7 @@
   "candidate_artifact_digest": "sha256:bbbe0da6fff3417c8000236036a052ed55f8a4ff5d589d8bd2f15187dd0281c9",
   "base_policy_id": "dc1c604c-46ea-40b7-9f47-cf582b225d5e",
   "bootstrap_policy_friendly_name": "Arvectum APL-WIN-014 Harness V10.6.4 Bootstrap",
+  "repair_cache_filename": "Arvectum Proxy Launcher Repair.exe",
   "files": {
     "setup": { "filename": "Arvectum-Proxy-Launcher-0.2.3-windows-x64-setup.exe", "size": 18582241, "sha256": "7e7640fe434067415840a154cfbeba0df443caf155fed38cff7ede1bc7d7d600" },
     "application": { "filename": "Arvectum Proxy Launcher.exe", "size": 16702107, "sha256": "559ae4d4a174ba03c0d649d04d6f494e89bade7f16acbeead8e3e7bec73fc932" },

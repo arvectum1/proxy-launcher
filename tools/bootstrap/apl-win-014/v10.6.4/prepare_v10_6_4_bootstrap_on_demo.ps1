@@ -9,6 +9,7 @@ $basePolicyIdText = 'dc1c604c-46ea-40b7-9f47-cf582b225d5e'
 $policyFriendlyName = 'Arvectum APL-WIN-014 Harness V10.6.4 Bootstrap'
 $policyVersion = '10.0.0.17'
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+. (Join-Path $scriptDir 'configci_xml_validation.ps1')
 if ([string]::IsNullOrWhiteSpace($CandidateRoot)) { throw 'CandidateRoot is required; this script never prompts.' }
 if (-not (Test-Path -LiteralPath $CandidateRoot -PathType Container)) { throw "CandidateRoot not found: $CandidateRoot" }
 function Get-Sha256([string]$Path) {
@@ -39,9 +40,9 @@ $xml = Join-Path $outDir 'Arvectum-APL-WIN-014-V10.6.4-Bootstrap.xml'
 New-CIPolicy -MultiplePolicyFormat -ScanPath $scanDir -UserPEs -NoScript -NoShadowCopy -FilePath $xml -Level Hash | Out-Null
 Set-CIPolicyIdInfo -FilePath $xml -ResetPolicyID -PolicyName $policyFriendlyName -SupplementsBasePolicyID ([guid]$basePolicyIdText) | Out-Null
 Set-CIPolicyVersion -FilePath $xml -Version $policyVersion | Out-Null
-if (-not (Select-String -Path $xml -Pattern '<Allow\s+[^>]*Hash="[^"]+"' -Quiet)) { throw 'Generated policy has no hash Allow rules.' }
 $policyId = (Select-String -Path $xml -Pattern '<PolicyID>\s*([^<]+)\s*</PolicyID>' | Select-Object -First 1).Matches.Groups[1].Value
 if ([string]::IsNullOrWhiteSpace($policyId)) { throw 'Generated policy has no PolicyID.' }
+Test-ConfigCiSupplementalXml -XmlPath $xml -PolicyId $policyId -BasePolicyId $basePolicyIdText -PolicyFriendlyName $policyFriendlyName -ExpectedHashRuleFileNames @($hashes.files.application.filename, $hashes.files.setup.filename) | Out-Null
 $cip = Join-Path $outDir (("{" + ($policyId -replace '[{}]','') + "}.cip"))
 ConvertFrom-CIPolicy -XmlFilePath $xml -BinaryFilePath $cip
 if (-not (Test-Path -LiteralPath $cip -PathType Leaf)) { throw 'ConfigCI did not create the binary supplemental policy.' }

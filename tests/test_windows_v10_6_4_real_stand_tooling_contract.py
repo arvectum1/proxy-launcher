@@ -16,6 +16,7 @@ class WindowsV1064RealStandToolingContractTests(unittest.TestCase):
             'capture_v10_6_4_post_install_reference.ps1',
             'prepare_v10_7_final_on_demo.ps1',
             'retire_v10_6_2_bootstrap_on_demo.ps1',
+            'configci_xml_validation.ps1',
             'test_citool_schema.ps1',
             'test_configci_xml_structure.ps1',
             'test_clm_contract.ps1',
@@ -27,7 +28,7 @@ class WindowsV1064RealStandToolingContractTests(unittest.TestCase):
 
     def test_production_scripts_are_noninteractive_and_do_not_invoke_ui_help(self):
         production = [path for path in TOOLS.glob('*.ps1') if not path.name.startswith('test_')]
-        self.assertGreaterEqual(len(production), 7)
+        self.assertGreaterEqual(len(production), 8)
         for path in production:
             text = path.read_text(encoding='utf-8-sig')
             self.assertNotIn('Parameter(Mandatory', text, path.name)
@@ -57,7 +58,34 @@ class WindowsV1064RealStandToolingContractTests(unittest.TestCase):
             self.assertIn('candidate_source_commit', text, name)
         retirement = (TOOLS / 'retire_v10_6_2_bootstrap_on_demo.ps1').read_text(encoding='utf-8-sig')
         self.assertIn('-ConfirmRetirement', retirement)
-        self.assertIn('IsEnforced -eq $true', retirement)
+        self.assertIn('ReplacementPolicyId', retirement)
+        self.assertIn('$_.PolicyID -eq $RetirePolicyId', retirement)
+        self.assertIn('$_.PolicyID -eq $ReplacementPolicyId', retirement)
+        self.assertIn('V10.6.2 target is not the expected enforced retirement state.', retirement)
+        self.assertIn('V10.6.4 replacement policy is not uniquely active after retirement.', retirement)
+
+    def test_policy_ids_and_repair_cache_are_exactly_bound(self):
+        install = (TOOLS / 'install_v10_6_4_bootstrap_on_demo.ps1').read_text(encoding='utf-8-sig')
+        post_deploy = (TOOLS / 'post_deploy_v10_6_4_verification.ps1').read_text(encoding='utf-8-sig')
+        capture = (TOOLS / 'capture_v10_6_4_post_install_reference.ps1').read_text(encoding='utf-8-sig')
+        seal = json.loads((TOOLS / 'expected_hashes.json').read_text(encoding='utf-8'))
+        self.assertIn('PolicyId', install)
+        self.assertIn('$_.PolicyID -eq $PolicyId', install)
+        self.assertIn('$_.PolicyID -eq $PolicyId', post_deploy)
+        self.assertIn('BootstrapPolicyId', capture)
+        self.assertIn('$_.PolicyID -eq $BootstrapPolicyId', capture)
+        self.assertEqual(seal['repair_cache_filename'], 'Arvectum Proxy Launcher Repair.exe')
+        self.assertIn('Mandatory cached repair setup is missing', capture)
+        self.assertIn('Mandatory cached repair setup hash', capture)
+
+    def test_generated_policies_share_structural_validation_and_v10_7_revalidates_capture(self):
+        validator = (TOOLS / 'configci_xml_validation.ps1').read_text(encoding='utf-8-sig')
+        self.assertIn('Test-ConfigCiSupplementalXml', validator)
+        for name in ('prepare_v10_6_4_bootstrap_on_demo.ps1', 'prepare_v10_7_final_on_demo.ps1'):
+            self.assertIn('Test-ConfigCiSupplementalXml', (TOOLS / name).read_text(encoding='utf-8-sig'))
+        v107 = (TOOLS / 'prepare_v10_7_final_on_demo.ps1').read_text(encoding='utf-8-sig')
+        self.assertIn('Captured live installation tree no longer exactly matches the reference inventory.', v107)
+        self.assertIn('Reference capture manifest hash does not match its checksum evidence.', v107)
 
     def test_fixture_set_is_complete(self):
         source_fixtures = {path.name for path in (ROOT / 'tools/bootstrap/apl-win-014/v10.6.3/fixtures').iterdir()}
