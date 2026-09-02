@@ -105,4 +105,37 @@ try {
 if (-not $f8) { throw 'TEST 9 FAILED: bootstrap missing should FAIL.' }
 Write-Host '  9. PASS: bootstrap missing (RequireBootstrap=true) -> REJECTED'
 
+# --- 10. PASS: braced expected Bootstrap ID + unbraced live CiTool ID ---
+$p2 = $false
+try {
+    $ci10 = @{ OperationResult=0; Policies=@((New-Base), (New-Bootstrap -Id '8d593266-9e22-463f-b594-df9b734d02de')) }
+    $r10 = Resolve-ClmPolicyEvidence -CiToolResult $ci10 -ExpectedBasePolicyId '{DC1C604C-46EA-40B7-9F47-CF582B225D5E}' -ExpectedBaseFriendlyName $labBaseName -ExpectedBootstrapPolicyId '{8D593266-9E22-463F-B594-DF9B734D02DE}' -ExpectedBootstrapFriendlyName $bootstrapName -RequireBootstrap $true
+    if ($r10.bootstrap.policy_id -eq '8d593266-9e22-463f-b594-df9b734d02de') { $p2 = $true }
+} catch { Write-Host "  DEBUG: $_" }
+if (-not $p2) { throw 'TEST 10 FAILED: braced expected and unbraced live Bootstrap should PASS.' }
+Write-Host ' 10. PASS: braced expected / unbraced live -> PASS'
+
+# --- 11. PASS: unbraced expected Bootstrap ID + braced live CiTool ID ---
+$p3 = $false
+try {
+    $ci11 = @{ OperationResult=0; Policies=@((New-Base), (New-Bootstrap -Id '{8D593266-9E22-463F-B594-DF9B734D02DE}' -BaseId '{DC1C604C-46EA-40B7-9F47-CF582B225D5E}')) }
+    $r11 = Resolve-ClmPolicyEvidence -CiToolResult $ci11 -ExpectedBasePolicyId $labBaseId -ExpectedBaseFriendlyName $labBaseName -ExpectedBootstrapPolicyId '8d593266-9e22-463f-b594-df9b734d02de' -ExpectedBootstrapFriendlyName $bootstrapName -RequireBootstrap $true
+    if ($r11.bootstrap.policy_id -eq '{8D593266-9E22-463F-B594-DF9B734D02DE}') { $p3 = $true }
+} catch { Write-Host "  DEBUG: $_" }
+if (-not $p3) { throw 'TEST 11 FAILED: unbraced expected and braced live Bootstrap should PASS.' }
+Write-Host ' 11. PASS: unbraced expected / braced live -> PASS'
+
+# --- 12-15. FAIL: malformed expected, malformed live, wrong ID, duplicate normalized identity ---
+foreach ($case in @(
+    @{ label='malformed expected'; id='{8D593266-9E22-463F-B594-DF9B734D02DE'; policies=@((New-Base), (New-Bootstrap -Id '8d593266-9e22-463f-b594-df9b734d02de')) },
+    @{ label='malformed live'; id='8d593266-9e22-463f-b594-df9b734d02de'; policies=@((New-Base), (New-Bootstrap -Id '8d593266-9e22-463f-b594-df9b734d02de}')) },
+    @{ label='wrong normalized ID'; id='8d593266-9e22-463f-b594-df9b734d02de'; policies=@((New-Base), (New-Bootstrap -Id '00000000-0000-0000-0000-000000000000')) },
+    @{ label='duplicate normalized ID'; id='8d593266-9e22-463f-b594-df9b734d02de'; policies=@((New-Base), (New-Bootstrap -Id '8d593266-9e22-463f-b594-df9b734d02de'), (New-Bootstrap -Id '{8D593266-9E22-463F-B594-DF9B734D02DE}')) }
+)) {
+    $rejected = $false
+    try { Resolve-ClmPolicyEvidence -CiToolResult @{ OperationResult=0; Policies=$case.policies } -ExpectedBasePolicyId $labBaseId -ExpectedBaseFriendlyName $labBaseName -ExpectedBootstrapPolicyId $case.id -ExpectedBootstrapFriendlyName $bootstrapName -RequireBootstrap $true | Out-Null } catch { $rejected = $true }
+    if (-not $rejected) { throw "Policy identity case was accepted: $($case.label)" }
+    Write-Host "  PASS: $($case.label) -> REJECTED"
+}
+
 Write-Host 'RESULT: PASS'

@@ -142,7 +142,8 @@ class WindowsV1064RealStandToolingContractTests(unittest.TestCase):
         retire = (TOOLS / 'retire_v10_6_2_bootstrap_on_demo.ps1').read_text(encoding='utf-8-sig')
         self.assertIn("11b32707-8981-4fe6-a852-3175aa1ac2bb", retire)
         self.assertIn('expectedRetirePolicyId', retire)
-        self.assertIn('RetirePolicyId -ine $expectedRetirePolicyId', retire)
+        self.assertIn('normalizedRetirePolicyId', retire)
+        self.assertIn('Convert-ClmPolicyGuidIdentity', retire)
 
     def test_reference_evidence_has_all_required_fields(self):
         capture = (TOOLS / 'capture_v10_6_4_post_install_reference.ps1').read_text(encoding='utf-8-sig')

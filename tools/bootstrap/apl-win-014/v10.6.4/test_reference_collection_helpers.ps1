@@ -79,18 +79,29 @@ $shortInv = @([ordered]@{ relative_path='file.exe'; sha256='AAA'; size=100; is_p
 try { Compare-ClmInventory -Expected $expectedInv -Live $shortInv } catch { $countFailed = $true }
 if (-not $countFailed) { throw 'CompareInventory: count mismatch should FAIL.' }
 
+# --- Policy GUID identity normalization tests ---
+$baseId = 'dc1c604c-46ea-40b7-9f47-cf582b225d5e'
+$bootstrapId = '8d593266-9e22-463f-b594-df9b734d02de'
+if ((Convert-ClmPolicyGuidIdentity '{DC1C604C-46EA-40B7-9F47-CF582B225D5E}') -ine $baseId) { throw 'Policy GUID normalizer did not accept braced GUID.' }
+if ((Convert-ClmPolicyGuidIdentity $bootstrapId) -ine (Convert-ClmPolicyGuidIdentity '{8D593266-9E22-463F-B594-DF9B734D02DE}')) { throw 'Policy GUID normalizer did not reconcile brace/case variants.' }
+foreach ($badGuid in @('{{8D593266-9E22-463F-B594-DF9B734D02DE}}', '8D593266-9E22-463F-B594-DF9B734D02DE}', '{8D593266-9E22-463F-B594-DF9B734D02DE', 'wrong GUID')) {
+    $rejected = $false
+    try { Convert-ClmPolicyGuidIdentity $badGuid | Out-Null } catch { $rejected = $true }
+    if (-not $rejected) { throw "Policy GUID normalizer accepted malformed input: $badGuid" }
+}
+
 # --- Test-ClmBasePolicyInvariant tests ---
-$validPolicy = [ordered]@{ policy_id='ID1'; base_policy_id='ID1'; friendly_name='Test'; is_on_disk=$true; is_enforced=$true; is_authorized=$true; policy_options=@('Enabled:Allow Supplemental Policies') }
-$invResult = Test-ClmBasePolicyInvariant -Policy $validPolicy -ExpectedPolicyId 'ID1' -ExpectedBasePolicyId 'ID1' -ExpectedFriendlyName 'Test'
+$validPolicy = [ordered]@{ policy_id='{DC1C604C-46EA-40B7-9F47-CF582B225D5E}'; base_policy_id='dc1c604c-46ea-40b7-9f47-cf582b225d5e'; friendly_name='Test'; is_on_disk=$true; is_enforced=$true; is_authorized=$true; policy_options=@('Enabled:Allow Supplemental Policies') }
+$invResult = Test-ClmBasePolicyInvariant -Policy $validPolicy -ExpectedPolicyId $baseId -ExpectedBasePolicyId "{$baseId}" -ExpectedFriendlyName 'Test'
 if ($invResult -ne $true) { throw 'BasePolicyInvariant: valid policy should PASS.' }
 
 $idFailed = $false
-try { Test-ClmBasePolicyInvariant -Policy $validPolicy -ExpectedPolicyId 'WRONG' -ExpectedBasePolicyId 'ID1' -ExpectedFriendlyName 'Test' } catch { $idFailed = $true }
+try { Test-ClmBasePolicyInvariant -Policy $validPolicy -ExpectedPolicyId '00000000-0000-0000-0000-000000000000' -ExpectedBasePolicyId $baseId -ExpectedFriendlyName 'Test' } catch { $idFailed = $true }
 if (-not $idFailed) { throw 'BasePolicyInvariant: wrong PolicyId should FAIL.' }
 
-$auditPolicy = [ordered]@{ policy_id='ID1'; base_policy_id='ID1'; friendly_name='Test'; is_on_disk=$true; is_enforced=$true; is_authorized=$true; policy_options=@('Enabled:Audit Mode') }
+$auditPolicy = [ordered]@{ policy_id=$baseId; base_policy_id=$baseId; friendly_name='Test'; is_on_disk=$true; is_enforced=$true; is_authorized=$true; policy_options=@('Enabled:Audit Mode') }
 $auditInvFailed = $false
-try { Test-ClmBasePolicyInvariant -Policy $auditPolicy -ExpectedPolicyId 'ID1' -ExpectedBasePolicyId 'ID1' -ExpectedFriendlyName 'Test' } catch { $auditInvFailed = $true }
+try { Test-ClmBasePolicyInvariant -Policy $auditPolicy -ExpectedPolicyId $baseId -ExpectedBasePolicyId $baseId -ExpectedFriendlyName 'Test' } catch { $auditInvFailed = $true }
 if (-not $auditInvFailed) { throw 'BasePolicyInvariant: Audit Mode should FAIL.' }
 
 Write-Host 'RESULT: PASS'

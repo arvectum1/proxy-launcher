@@ -16,8 +16,8 @@ $policyEvi = Get-ClmPolicyEvidence -ExpectedBasePolicyId $basePolicyIdText -Expe
 $basePolicy = $policyEvi.base
 $bootstrapPolicy = $policyEvi.bootstrap
 Test-ClmBasePolicyInvariant -Policy $basePolicy -ExpectedPolicyId $basePolicyIdText -ExpectedBasePolicyId $basePolicyIdText -ExpectedFriendlyName $baseFriendlyName
-if ($bootstrapPolicy.policy_id -ne $PolicyId) { throw 'Bootstrap PolicyID does not match expected.' }
-if ($bootstrapPolicy.base_policy_id -ne $basePolicyIdText) { throw 'Bootstrap BasePolicyID does not match canonical Lab Base.' }
+if ((Convert-ClmPolicyGuidIdentity $bootstrapPolicy.policy_id) -ine (Convert-ClmPolicyGuidIdentity $PolicyId)) { throw 'Bootstrap PolicyID does not match expected.' }
+if ((Convert-ClmPolicyGuidIdentity $bootstrapPolicy.base_policy_id) -ine (Convert-ClmPolicyGuidIdentity $basePolicyIdText)) { throw 'Bootstrap BasePolicyID does not match canonical Lab Base.' }
 if ($bootstrapPolicy.friendly_name -ne $bootstrapFriendlyName) { throw 'Bootstrap FriendlyName does not match expected.' }
 if ($bootstrapPolicy.is_on_disk -ne $true -or $bootstrapPolicy.is_enforced -ne $true -or $bootstrapPolicy.is_authorized -ne $true) { throw 'Bootstrap policy is not OnDisk/Enforced/Authorized.' }
 if ($bootstrapPolicy.policy_options.Count -gt 0) { Test-ClmAuditModeRejection -PolicyOptions $bootstrapPolicy.policy_options -PolicyLabel 'V10.6.4 Bootstrap supplemental' }

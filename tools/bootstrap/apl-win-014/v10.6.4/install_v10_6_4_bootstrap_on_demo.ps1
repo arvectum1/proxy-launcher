@@ -18,8 +18,8 @@ $seal = Get-Content -LiteralPath (Join-Path $scriptDir 'expected_hashes.json') -
 if ($authoring.schema -ne 'arvectum.proxy.apl-win-014-v10.6.4-bootstrap-authoring.v3') { throw 'Authoring evidence schema mismatch.' }
 if ($authoring.candidate_source_commit -ne $seal.candidate_source_commit) { throw ('Authoring candidate_source_commit mismatch: expected {0} got {1}.' -f $seal.candidate_source_commit, $authoring.candidate_source_commit) }
 if ($authoring.candidate_artifact_id -ne $seal.candidate_artifact_id) { throw ('Authoring candidate_artifact_id mismatch: expected {0} got {1}.' -f $seal.candidate_artifact_id, $authoring.candidate_artifact_id) }
-if ($authoring.base_policy_id -ne $basePolicyIdText) { throw 'Authoring base_policy_id mismatch.' }
-if ($authoring.supplemental_policy_id -ne $PolicyId) { throw 'Authoring supplemental_policy_id mismatch.' }
+if ((Convert-ClmPolicyGuidIdentity $authoring.base_policy_id) -ine (Convert-ClmPolicyGuidIdentity $basePolicyIdText)) { throw 'Authoring base_policy_id mismatch.' }
+if ((Convert-ClmPolicyGuidIdentity $authoring.supplemental_policy_id) -ine (Convert-ClmPolicyGuidIdentity $PolicyId)) { throw 'Authoring supplemental_policy_id mismatch.' }
 if ($authoring.supplemental_policy_friendly_name -ne $friendlyName) { throw 'Authoring supplemental_policy_friendly_name mismatch.' }
 if ($authoring.supplemental_policy_version -ne '10.0.0.17') { throw 'Authoring supplemental_policy_version mismatch.' }
 if ($authoring.deployment -ne 'NOT PERFORMED') { throw 'Authoring evidence deployment state is not NOT PERFORMED.' }
@@ -38,13 +38,15 @@ if (Test-Path -LiteralPath $xmlPath -PathType Leaf) {
     if ($expectedXmlSha256 -ne '') { throw 'Authoring evidence references XML but file not found.' }
 }
 $before = & CiTool.exe -lp -json 2>$null | ConvertFrom-Json
-$base = @($before.Policies | Where-Object { $_.PolicyID -eq $basePolicyIdText })
-if ($before.OperationResult -ne 0 -or $base.Count -ne 1 -or $base[0].BasePolicyID -ne $basePolicyIdText -or $base[0].FriendlyName -ne 'Arvectum APL-WIN-014 Lab Base' -or $base[0].IsOnDisk -ne $true -or $base[0].IsEnforced -ne $true -or $base[0].IsAuthorized -ne $true -or @($base[0].PolicyOptions | Where-Object { $_ -eq 'Enabled:Allow Supplemental Policies' }).Count -ne 1) { throw 'Canonical Lab Base validation failed closed.' }
-Test-ClmAuditModeRejection -PolicyOptions @($base[0].PolicyOptions) -PolicyLabel 'Canonical Lab Base pre-deploy'
+$baseEvidence = Resolve-ClmPolicyEvidence -CiToolResult $before -ExpectedBasePolicyId $basePolicyIdText -ExpectedBaseFriendlyName 'Arvectum APL-WIN-014 Lab Base' -RequireBootstrap $false
+$base = @($baseEvidence.base)
+if ($base.Count -ne 1 -or @($base[0].policy_options | Where-Object { $_ -eq 'Enabled:Allow Supplemental Policies' }).Count -ne 1) { throw 'Canonical Lab Base validation failed closed.' }
+Test-ClmAuditModeRejection -PolicyOptions @($base[0].policy_options) -PolicyLabel 'Canonical Lab Base pre-deploy'
 & CiTool.exe --update-policy $CipPath
 if ($LASTEXITCODE -ne 0) { throw "CiTool --update-policy failed with exit code $LASTEXITCODE" }
 Start-Sleep -Seconds 3
 $after = (& CiTool.exe -lp -json 2>$null | ConvertFrom-Json)
-$deployed = @($after.Policies | Where-Object { $_.PolicyID -eq $PolicyId -and $_.BasePolicyID -eq $basePolicyIdText -and $_.FriendlyName -eq $friendlyName -and $_.IsOnDisk -eq $true -and $_.IsEnforced -eq $true -and $_.IsAuthorized -eq $true })
-if ($after.OperationResult -ne 0 -or $deployed.Count -ne 1) { throw 'V10.6.4 Bootstrap was not uniquely active after deployment.' }
+$afterEvidence = Resolve-ClmPolicyEvidence -CiToolResult $after -ExpectedBasePolicyId $basePolicyIdText -ExpectedBaseFriendlyName 'Arvectum APL-WIN-014 Lab Base' -ExpectedBootstrapPolicyId $PolicyId -ExpectedBootstrapFriendlyName $friendlyName
+$deployed = @($afterEvidence.bootstrap)
+if ($deployed.Count -ne 1) { throw 'V10.6.4 Bootstrap was not uniquely active after deployment.' }
 Write-Host "DEPLOYMENT COMPLETE: $PolicyId"

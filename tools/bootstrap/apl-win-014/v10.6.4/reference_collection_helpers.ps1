@@ -10,6 +10,18 @@ function Get-ClmRelativePath {
     return $FullPath
 }
 
+function Convert-ClmPolicyGuidIdentity {
+    [CmdletBinding()]
+    param([string]$Guid = '')
+    Set-StrictMode -Version Latest
+    $ErrorActionPreference = 'Stop'
+    if ($Guid -eq '') { throw 'Policy GUID is required.' }
+    if (($Guid -match '^\{') -ne ($Guid -match '\}$')) { throw "Malformed policy GUID: $Guid" }
+    $normalized = $Guid -replace '^\{', '' -replace '\}$', ''
+    if ($normalized -notmatch '^[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}$') { throw "Malformed policy GUID: $Guid" }
+    return $normalized
+}
+
 function Test-ClmPolicyOptionsValid {
     [CmdletBinding()]
     param([string[]]$PolicyOptions = @(), [bool]$RequireSupplemental = $true, [string]$PolicyLabel = 'policy')
@@ -130,9 +142,10 @@ function Resolve-ClmPolicyEvidence {
     if ($ExpectedBasePolicyId -eq '') { throw 'ExpectedBasePolicyId is required.' }
     if ($ExpectedBaseFriendlyName -eq '') { throw 'ExpectedBaseFriendlyName is required.' }
     if ($CiToolResult.OperationResult -ne 0) { throw 'CiTool -lp returned non-zero OperationResult.' }
-    $base = @($CiToolResult.Policies | Where-Object { $_.PolicyID -eq $ExpectedBasePolicyId })
+    $normalizedExpectedBasePolicyId = Convert-ClmPolicyGuidIdentity $ExpectedBasePolicyId
+    $base = @($CiToolResult.Policies | Where-Object { (Convert-ClmPolicyGuidIdentity "$($_.PolicyID)") -ieq $normalizedExpectedBasePolicyId })
     if ($base.Count -ne 1) { throw "Canonical Lab Base not uniquely present (found $($base.Count))." }
-    if ($base[0].BasePolicyID -ne $ExpectedBasePolicyId) { throw 'Canonical Lab Base BasePolicyID self-reference mismatch.' }
+    if ((Convert-ClmPolicyGuidIdentity "$($base[0].BasePolicyID)") -ine $normalizedExpectedBasePolicyId) { throw 'Canonical Lab Base BasePolicyID self-reference mismatch.' }
     if ($base[0].FriendlyName -ne $ExpectedBaseFriendlyName -and ($ExpectedBaseFriendlyNameAlt -eq '' -or $base[0].FriendlyName -ne $ExpectedBaseFriendlyNameAlt)) {
         if ($base[0].FriendlyName -ne $ExpectedBaseFriendlyName) { throw "Canonical Lab Base FriendlyName mismatch: expected '$ExpectedBaseFriendlyName' got '$($base[0].FriendlyName)'." }
     }
@@ -143,9 +156,10 @@ function Resolve-ClmPolicyEvidence {
         return [ordered]@{ base=$baseEvidence; bootstrap=$null }
     }
     if ($ExpectedBootstrapPolicyId -eq '' -or $ExpectedBootstrapFriendlyName -eq '') { throw 'Bootstrap identity parameters required when RequireBootstrap is true.' }
-    $bootstrap = @($CiToolResult.Policies | Where-Object { $_.PolicyID -eq $ExpectedBootstrapPolicyId })
+    $normalizedExpectedBootstrapPolicyId = Convert-ClmPolicyGuidIdentity $ExpectedBootstrapPolicyId
+    $bootstrap = @($CiToolResult.Policies | Where-Object { (Convert-ClmPolicyGuidIdentity "$($_.PolicyID)") -ieq $normalizedExpectedBootstrapPolicyId })
     if ($bootstrap.Count -ne 1) { throw "Bootstrap policy not uniquely present (found $($bootstrap.Count))." }
-    if ($bootstrap[0].BasePolicyID -ne $ExpectedBasePolicyId) { throw "Bootstrap BasePolicyID mismatch: expected '$ExpectedBasePolicyId' got '$($bootstrap[0].BasePolicyID)'." }
+    if ((Convert-ClmPolicyGuidIdentity "$($bootstrap[0].BasePolicyID)") -ine $normalizedExpectedBasePolicyId) { throw "Bootstrap BasePolicyID mismatch: expected '$ExpectedBasePolicyId' got '$($bootstrap[0].BasePolicyID)'." }
     if ($bootstrap[0].FriendlyName -ne $ExpectedBootstrapFriendlyName) { throw "Bootstrap FriendlyName mismatch: expected '$ExpectedBootstrapFriendlyName' got '$($bootstrap[0].FriendlyName)'." }
     if ($bootstrap[0].IsOnDisk -ne $true -or $bootstrap[0].IsEnforced -ne $true -or $bootstrap[0].IsAuthorized -ne $true) { throw 'Bootstrap policy is not OnDisk/Enforced/Authorized.' }
     $bootstrapOptions = @($bootstrap[0].PolicyOptions)
@@ -211,8 +225,8 @@ function Test-ClmBasePolicyInvariant {
     param([hashtable]$Policy = @{}, [string]$ExpectedPolicyId = '', [string]$ExpectedBasePolicyId = '', [string]$ExpectedFriendlyName = '')
     Set-StrictMode -Version Latest
     $ErrorActionPreference = 'Stop'
-    if ($Policy.policy_id -ne $ExpectedPolicyId) { throw "PolicyID mismatch: expected $ExpectedPolicyId got $($Policy.policy_id)." }
-    if ($Policy.base_policy_id -ne $ExpectedBasePolicyId) { throw "BasePolicyID mismatch: expected $ExpectedBasePolicyId got $($Policy.base_policy_id)." }
+    if ((Convert-ClmPolicyGuidIdentity "$($Policy.policy_id)") -ine (Convert-ClmPolicyGuidIdentity $ExpectedPolicyId)) { throw "PolicyID mismatch: expected $ExpectedPolicyId got $($Policy.policy_id)." }
+    if ((Convert-ClmPolicyGuidIdentity "$($Policy.base_policy_id)") -ine (Convert-ClmPolicyGuidIdentity $ExpectedBasePolicyId)) { throw "BasePolicyID mismatch: expected $ExpectedBasePolicyId got $($Policy.base_policy_id)." }
     if ($Policy.friendly_name -ne $ExpectedFriendlyName) { throw "FriendlyName mismatch: expected $ExpectedFriendlyName got $($Policy.friendly_name)." }
     if ($Policy.is_on_disk -ne $true) { throw 'Policy is not OnDisk.' }
     if ($Policy.is_enforced -ne $true) { throw 'Policy is not Enforced.' }
