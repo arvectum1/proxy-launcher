@@ -12,7 +12,7 @@ $baseFriendlyName = 'Arvectum APL-WIN-014 Lab Base'
 $bootstrapFriendlyName = 'Arvectum APL-WIN-014 Harness V10.6.4 Bootstrap'
 if (-not (Get-Command CiTool.exe -ErrorAction SilentlyContinue)) { throw 'CiTool.exe not found.' }
 if ([string]::IsNullOrWhiteSpace($PolicyId) -or [string]::IsNullOrWhiteSpace($EvidencePath)) { throw 'PolicyId and EvidencePath are required; this script never prompts.' }
-$policyEvi = Get-ClmPolicyEvidence -ExpectedBasePolicyId $basePolicyIdText -ExpectedBootstrapPolicyId $PolicyId -ExpectedBootstrapFriendlyName $bootstrapFriendlyName
+$policyEvi = Get-ClmPolicyEvidence -ExpectedBasePolicyId $basePolicyIdText -ExpectedBaseFriendlyName $baseFriendlyName -ExpectedBootstrapPolicyId $PolicyId -ExpectedBootstrapFriendlyName $bootstrapFriendlyName
 $basePolicy = $policyEvi.base
 $bootstrapPolicy = $policyEvi.bootstrap
 Test-ClmBasePolicyInvariant -Policy $basePolicy -ExpectedPolicyId $basePolicyIdText -ExpectedBasePolicyId $basePolicyIdText -ExpectedFriendlyName $baseFriendlyName

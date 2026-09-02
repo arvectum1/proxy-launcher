@@ -293,6 +293,18 @@ class WindowsV1064RealStandToolingContractTests(unittest.TestCase):
         self.assertTrue((TOOLS / 'test_bootstrap_policy_identity.ps1').exists())
         self.assertTrue((TOOLS / 'test_deploy_authoring_provenance.ps1').exists())
 
+    def test_production_callers_pass_expected_base_friendly_name(self):
+        import re
+        for name in ('post_deploy_v10_6_4_verification.ps1', 'capture_v10_6_4_post_install_reference.ps1'):
+            text = (TOOLS / name).read_text(encoding='utf-8-sig')
+            call_match = re.search(r'Get-ClmPolicyEvidence\s+(.*?)(?:\n|$)', text)
+            self.assertIsNotNone(call_match, f'{name}: Get-ClmPolicyEvidence call not found')
+            call_args = call_match.group(1)
+            self.assertIn('-ExpectedBaseFriendlyName', call_args, f'{name}: Get-ClmPolicyEvidence missing -ExpectedBaseFriendlyName')
+            self.assertIn('-ExpectedBootstrapFriendlyName', call_args, f'{name}: Get-ClmPolicyEvidence missing -ExpectedBootstrapFriendlyName')
+            self.assertIn('-ExpectedBasePolicyId', call_args, f'{name}: Get-ClmPolicyEvidence missing -ExpectedBasePolicyId')
+            self.assertIn('-ExpectedBootstrapPolicyId', call_args, f'{name}: Get-ClmPolicyEvidence missing -ExpectedBootstrapPolicyId')
+
 
 if __name__ == '__main__':
     unittest.main()

@@ -13,7 +13,8 @@ function Get-Sha256([string]$Path) { $out = & (Join-Path $env:SystemRoot 'System
 $seal = Get-Content -LiteralPath (Join-Path $scriptDir 'expected_hashes.json') -Raw | ConvertFrom-Json
 $basePolicyIdText = $seal.base_policy_id
 $friendlyName = $seal.bootstrap_policy_friendly_name
-$policyEvi = Get-ClmPolicyEvidence -ExpectedBasePolicyId $basePolicyIdText -ExpectedBootstrapPolicyId $BootstrapPolicyId -ExpectedBootstrapFriendlyName $friendlyName
+$baseFriendlyName = 'Arvectum APL-WIN-014 Lab Base'
+$policyEvi = Get-ClmPolicyEvidence -ExpectedBasePolicyId $basePolicyIdText -ExpectedBaseFriendlyName $baseFriendlyName -ExpectedBootstrapPolicyId $BootstrapPolicyId -ExpectedBootstrapFriendlyName $friendlyName
 $basePolicy = $policyEvi.base
 $bootstrapPolicy = $policyEvi.bootstrap
 Test-ClmBasePolicyInvariant -Policy $basePolicy -ExpectedPolicyId $basePolicyIdText -ExpectedBasePolicyId $basePolicyIdText -ExpectedFriendlyName 'Arvectum APL-WIN-014 Lab Base'
