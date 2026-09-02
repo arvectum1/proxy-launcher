@@ -5,15 +5,14 @@ function Convert-ClmPolicyGuid {
     Set-StrictMode -Version Latest
     $ErrorActionPreference = 'Stop'
     if ($Guid -eq '') { throw 'GUID is required.' }
-    $normalized = $Guid
-    if ($normalized -match '^\{[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}\}$') { $normalized = $normalized.Substring(1, $normalized.Length - 2) }
+    $normalized = $Guid -replace '^\{', '' -replace '\}$', ''
     if ($normalized -notmatch '^[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}$') { throw "Malformed policy GUID: $Guid" }
-    return $normalized.ToLowerInvariant()
+    return ($normalized -replace '^(.*)$', { $_.Value.ToLower() })
 }
 function Get-ClmConfigCiRuleBaseName {
     [CmdletBinding()]
     param([string]$FriendlyName = '')
-    if ($FriendlyName -match '[\\/]([^\\/:]*\.[^\\/:]+)\s+Hash\s+') { return $matches[1] + ' Hash ' + $FriendlyName.Substring($FriendlyName.IndexOf(' Hash ') + 6) }
+    if ($FriendlyName -match '[\\/]') { return ($FriendlyName -replace '^.*[\\/]', '') }
     return $FriendlyName
 }
 function Test-ConfigCiSupplementalXml {
