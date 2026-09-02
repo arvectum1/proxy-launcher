@@ -18,7 +18,7 @@ $policyEvi = Get-ClmPolicyEvidence -ExpectedBasePolicyId $basePolicyIdText -Expe
 $basePolicy = $policyEvi.base
 $bootstrapPolicy = $policyEvi.bootstrap
 Test-ClmBasePolicyInvariant -Policy $basePolicy -ExpectedPolicyId $basePolicyIdText -ExpectedBasePolicyId $basePolicyIdText -ExpectedFriendlyName 'Arvectum APL-WIN-014 Lab Base'
-if ($bootstrapPolicy.policy_id -ne $BootstrapPolicyId) { throw 'Bootstrap PolicyID does not match expected.' }
+if ((Convert-ClmPolicyGuidIdentity $bootstrapPolicy.policy_id) -ine (Convert-ClmPolicyGuidIdentity $BootstrapPolicyId)) { throw 'Bootstrap PolicyID does not match expected.' }
 if ($bootstrapPolicy.is_on_disk -ne $true -or $bootstrapPolicy.is_enforced -ne $true -or $bootstrapPolicy.is_authorized -ne $true) { throw 'Bootstrap policy is not OnDisk/Enforced/Authorized.' }
 $app = Join-Path $InstallRoot $seal.files.application.filename
 $repair = Join-Path $InstallRoot $seal.repair_cache_filename

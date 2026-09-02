@@ -18,7 +18,7 @@ $seal = Get-Content -LiteralPath (Join-Path $scriptDir 'expected_hashes.json') -
 function Get-Sha256([string]$Path) { $out = & (Join-Path $env:SystemRoot 'System32\certutil.exe') -hashfile $Path SHA256; $hashes = @($out | Where-Object { $_ -match '^\s*[0-9A-Fa-f]{64}\s*$' } | ForEach-Object { $_ -replace '^\s+|\s+$','' }); if ($LASTEXITCODE -ne 0 -or $hashes.Count -ne 1) { throw "certutil SHA256 failed for $Path" }; $hashes[0] }
 if ($capture.schema -ne 'arvectum.proxy.apl-win-014-v10.6.4-reference-capture.v4') { throw "Reference capture schema is unexpected: $($capture.schema)." }
 if ($capture.candidate_source_commit -ne $seal.candidate_source_commit -or $capture.candidate_artifact_id -ne $seal.candidate_artifact_id -or $capture.candidate_version -ne $seal.candidate_version) { throw 'Reference capture is not bound to the sealed V10.6.4 candidate.' }
-if ($capture.base_policy_id -ne $basePolicyIdText) { throw 'Reference capture base_policy_id mismatch.' }
+if ((Convert-ClmPolicyGuidIdentity $capture.base_policy_id) -ine (Convert-ClmPolicyGuidIdentity $basePolicyIdText)) { throw 'Reference capture base_policy_id mismatch.' }
 if ($capture.bootstrap_policy_friendly_name -ne $seal.bootstrap_policy_friendly_name) { throw 'Reference capture bootstrap friendly name mismatch.' }
 if ($capture.bootstrap_policy_id -eq '') { throw 'Reference capture missing bootstrap_policy_id.' }
 if ($capture.mandatory_repair_cache.filename -ne $seal.repair_cache_filename -or $capture.mandatory_repair_cache.sha256 -ine $seal.files.setup.sha256) { throw 'Reference capture mandatory repair evidence is incomplete.' }

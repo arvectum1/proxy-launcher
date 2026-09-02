@@ -47,13 +47,13 @@ function New-ValidAuthoringEvidence {
 }
 
 function Test-DeployValidation {
-    param([string]$AuthoringPath)
+    param([string]$AuthoringPath, [string]$SuppliedPolicyId = '{11111111-1111-1111-1111-111111111111}')
     $authoring = Get-Content -LiteralPath $AuthoringPath -Raw | ConvertFrom-Json
     if ($authoring.schema -ne 'arvectum.proxy.apl-win-014-v10.6.4-bootstrap-authoring.v3') { throw 'Authoring evidence schema mismatch.' }
     if ($authoring.candidate_source_commit -ne $seal.candidate_source_commit) { throw ('Authoring candidate_source_commit mismatch: expected {0} got {1}.' -f $seal.candidate_source_commit, $authoring.candidate_source_commit) }
     if ($authoring.candidate_artifact_id -ne $seal.candidate_artifact_id) { throw ('Authoring candidate_artifact_id mismatch: expected {0} got {1}.' -f $seal.candidate_artifact_id, $authoring.candidate_artifact_id) }
-    if ($authoring.base_policy_id -ne $basePolicyIdText) { throw 'Authoring base_policy_id mismatch.' }
-    if ($authoring.supplemental_policy_id -ne '{11111111-1111-1111-1111-111111111111}') { throw 'Authoring supplemental_policy_id mismatch.' }
+    if ((Convert-ClmPolicyGuidIdentity $authoring.base_policy_id) -ine (Convert-ClmPolicyGuidIdentity $basePolicyIdText)) { throw 'Authoring base_policy_id mismatch.' }
+    if ((Convert-ClmPolicyGuidIdentity $authoring.supplemental_policy_id) -ine (Convert-ClmPolicyGuidIdentity $SuppliedPolicyId)) { throw 'Authoring supplemental_policy_id mismatch.' }
     if ($authoring.supplemental_policy_friendly_name -ne $friendlyName) { throw 'Authoring supplemental_policy_friendly_name mismatch.' }
     if ($authoring.supplemental_policy_version -ne '10.0.0.17') { throw 'Authoring supplemental_policy_version mismatch.' }
     if ($authoring.deployment -ne 'NOT PERFORMED') { throw 'Authoring evidence deployment state is not NOT PERFORMED.' }
@@ -162,5 +162,40 @@ try {
 } catch { $f8 = $true; Remove-Item -LiteralPath (Split-Path -Parent $ev9) -Recurse -Force -ErrorAction SilentlyContinue }
 if (-not $f8) { throw 'TEST 9 FAILED: deployment != NOT PERFORMED should FAIL.' }
 Write-Host '  9. PASS: deployment != NOT PERFORMED -> REJECTED'
+
+# --- 10. PASS: braced authoring PolicyID and unbraced supplied PolicyID reconcile before mutation ---
+$p10 = $false
+try {
+    $ev10 = New-ValidAuthoringEvidence -PolicyId '{8D593266-9E22-463F-B594-DF9B734D02DE}'
+    Test-DeployValidation -AuthoringPath $ev10 -SuppliedPolicyId '8d593266-9e22-463f-b594-df9b734d02de'
+    $p10 = $true
+    Remove-Item -LiteralPath (Split-Path -Parent $ev10) -Recurse -Force -ErrorAction SilentlyContinue
+} catch { $p10 = $false }
+if (-not $p10) { throw 'TEST 10 FAILED: equivalent authored and supplied IDs should PASS before mutation.' }
+Write-Host ' 10. PASS: braced authoring / unbraced supplied ID -> ACCEPTED BEFORE MUTATION'
+
+# --- 11. FAIL: different normalized authoring and supplied IDs before mutation ---
+$f9 = $false
+try {
+    $ev11 = New-ValidAuthoringEvidence -PolicyId '{8D593266-9E22-463F-B594-DF9B734D02DE}'
+    Test-DeployValidation -AuthoringPath $ev11 -SuppliedPolicyId '00000000-0000-0000-0000-000000000000'
+} catch { $f9 = $true; Remove-Item -LiteralPath (Split-Path -Parent $ev11) -Recurse -Force -ErrorAction SilentlyContinue }
+if (-not $f9) { throw 'TEST 11 FAILED: different normalized IDs should fail before mutation.' }
+Write-Host ' 11. PASS: different authored / supplied ID -> REJECTED BEFORE MUTATION'
+
+# --- 12-13. Post-deploy CiTool reconciliation accepts equivalent identity and rejects drift/duplicates ---
+$liveBase = @{ PolicyID='dc1c604c-46ea-40b7-9f47-cf582b225d5e'; BasePolicyID='dc1c604c-46ea-40b7-9f47-cf582b225d5e'; FriendlyName='Arvectum APL-WIN-014 Lab Base'; IsOnDisk=$true; IsEnforced=$true; IsAuthorized=$true; PolicyOptions=@('Enabled:Allow Supplemental Policies') }
+$liveBootstrap = @{ PolicyID='8d593266-9e22-463f-b594-df9b734d02de'; BasePolicyID='dc1c604c-46ea-40b7-9f47-cf582b225d5e'; FriendlyName=$friendlyName; Version='10.0.0.17'; IsOnDisk=$true; IsEnforced=$true; IsAuthorized=$true; PolicyOptions=@() }
+Resolve-ClmPolicyEvidence -CiToolResult @{ OperationResult=0; Policies=@($liveBase, $liveBootstrap) } -ExpectedBasePolicyId "{$basePolicyIdText}" -ExpectedBaseFriendlyName 'Arvectum APL-WIN-014 Lab Base' -ExpectedBootstrapPolicyId '{8D593266-9E22-463F-B594-DF9B734D02DE}' -ExpectedBootstrapFriendlyName $friendlyName | Out-Null
+Write-Host ' 12. PASS: unbraced live / braced authored ID -> POST-DEPLOY RECONCILIATION PASS'
+foreach ($case in @(
+    @{ label='different normalized live ID'; policies=@($liveBase, (@{ PolicyID='00000000-0000-0000-0000-000000000000'; BasePolicyID=$basePolicyIdText; FriendlyName=$friendlyName; Version='10.0.0.17'; IsOnDisk=$true; IsEnforced=$true; IsAuthorized=$true; PolicyOptions=@() })) },
+    @{ label='duplicate normalized live ID'; policies=@($liveBase, $liveBootstrap, (@{ PolicyID='{8D593266-9E22-463F-B594-DF9B734D02DE}'; BasePolicyID=$basePolicyIdText; FriendlyName=$friendlyName; Version='10.0.0.17'; IsOnDisk=$true; IsEnforced=$true; IsAuthorized=$true; PolicyOptions=@() })) }
+)) {
+    $rejected = $false
+    try { Resolve-ClmPolicyEvidence -CiToolResult @{ OperationResult=0; Policies=$case.policies } -ExpectedBasePolicyId $basePolicyIdText -ExpectedBaseFriendlyName 'Arvectum APL-WIN-014 Lab Base' -ExpectedBootstrapPolicyId '{8D593266-9E22-463F-B594-DF9B734D02DE}' -ExpectedBootstrapFriendlyName $friendlyName | Out-Null } catch { $rejected = $true }
+    if (-not $rejected) { throw "TEST 13 FAILED: $($case.label) should fail post-deploy reconciliation." }
+    Write-Host "  PASS: $($case.label) -> REJECTED"
+}
 
 Write-Host 'RESULT: PASS'
