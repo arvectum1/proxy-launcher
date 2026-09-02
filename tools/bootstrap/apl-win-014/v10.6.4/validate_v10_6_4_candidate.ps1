@@ -1,19 +1,27 @@
 <# Validates only the immutable V10.6.4 candidate payload; it never builds or deploys. #>
 [CmdletBinding()]
 param(
-    [Parameter(Mandatory)] [string]$CandidateRoot,
-    [Parameter(Mandatory)] [string]$ObservedRunId,
-    [Parameter(Mandatory)] [string]$ObservedRunAttempt,
-    [Parameter(Mandatory)] [string]$ObservedArtifactId,
-    [Parameter(Mandatory)] [string]$ObservedArtifactName,
-    [Parameter(Mandatory)] [string]$ObservedArtifactDigest,
-    [Parameter(Mandatory)] [string]$ObservedSourceCommit,
+    [string]$CandidateRoot = '',
+    [string]$ObservedRunId = '',
+    [string]$ObservedRunAttempt = '',
+    [string]$ObservedArtifactId = '',
+    [string]$ObservedArtifactName = '',
+    [string]$ObservedArtifactDigest = '',
+    [string]$ObservedSourceCommit = '',
     [string]$ExpectedHashesPath = (Join-Path $PSScriptRoot 'expected_hashes.json')
 )
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-function Get-Sha256([string]$Path) { (Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash.ToLowerInvariant() }
+function Get-Sha256([string]$Path) {
+    $certUtil = Join-Path $env:SystemRoot 'System32\certutil.exe'
+    if (-not (Test-Path -LiteralPath $certUtil -PathType Leaf)) { throw 'certutil.exe not found in System32.' }
+    $output = & $certUtil -hashfile $Path SHA256
+    if ($LASTEXITCODE -ne 0) { throw "certutil SHA256 failed for $Path" }
+    $hashes = @($output | Where-Object { $_ -match '^\s*[0-9A-Fa-f]{64}\s*$' } | ForEach-Object { $_ -replace '^\s+|\s+$','' })
+    if ($hashes.Count -ne 1) { throw "certutil SHA256 produced $($hashes.Count) hash candidates for $Path" }
+    return $hashes[0].ToLower()
+}
 function Require-Equal([string]$Actual, [string]$Expected, [string]$Name) {
     if ($Actual -cne $Expected) { throw "$Name mismatch: expected $Expected, got $Actual" }
 }
@@ -21,6 +29,9 @@ function Require-Pass([object]$Value, [string]$Name) {
     if ($Value -ne 'PASS') { throw "$Name did not report PASS." }
 }
 
+foreach ($input in @($CandidateRoot, $ObservedRunId, $ObservedRunAttempt, $ObservedArtifactId, $ObservedArtifactName, $ObservedArtifactDigest, $ObservedSourceCommit)) {
+    if ([string]::IsNullOrWhiteSpace($input)) { throw 'CandidateRoot and all observed sealing identity values are required; the script never prompts.' }
+}
 $CandidateRoot = (Resolve-Path -LiteralPath $CandidateRoot).Path
 $expected = Get-Content -LiteralPath $ExpectedHashesPath -Raw | ConvertFrom-Json
 # Outer GitHub artifact identity is independent from the nested candidate files.
