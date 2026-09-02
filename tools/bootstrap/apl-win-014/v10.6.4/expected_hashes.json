@@ -1,0 +1,23 @@
+{
+  "schema": "arvectum.proxy.apl-win-014-v10.6.4-seal.v1",
+  "task": "APL-WIN-014",
+  "harness_version": "V10.6.4",
+  "candidate_version": "0.2.3",
+  "candidate_source_commit": "445d3e6a731c4406b8ecf6c12674b1fa074bd1e7",
+  "candidate_workflow": "APL-WIN-014 V10.6.4 candidate",
+  "candidate_run_id": "33559232176",
+  "candidate_run_attempt": "1",
+  "candidate_artifact_name": "apl-win-014-v10.6.4-candidate-33559232176-1",
+  "candidate_artifact_id": "9820644184",
+  "candidate_artifact_digest": "sha256:bbbe0da6fff3417c8000236036a052ed55f8a4ff5d589d8bd2f15187dd0281c9",
+  "base_policy_id": "dc1c604c-46ea-40b7-9f47-cf582b225d5e",
+  "bootstrap_policy_friendly_name": "Arvectum APL-WIN-014 Harness V10.6.4 Bootstrap",
+  "files": {
+    "setup": { "filename": "Arvectum-Proxy-Launcher-0.2.3-windows-x64-setup.exe", "size": 18582241, "sha256": "7e7640fe434067415840a154cfbeba0df443caf155fed38cff7ede1bc7d7d600" },
+    "application": { "filename": "Arvectum Proxy Launcher.exe", "size": 16702107, "sha256": "559ae4d4a174ba03c0d649d04d6f494e89bade7f16acbeead8e3e7bec73fc932" },
+    "build_manifest": { "filename": "build_manifest.json", "size": 899, "sha256": "c7548353e92c5b4a96dddcd7570109b8077e8e168af654d9c12279dc27119c0f" },
+    "upgrade_helper": { "filename": "upgrade_helper.ps1", "size": 10090, "sha256": "c29a3aa64750190e6103a6829265d9541967756a968fc29cc0229733966a2836" },
+    "uninstall_helper": { "filename": "uninstall_helper.ps1", "size": 6986, "sha256": "dc33e8a5ebcf2222da35e60e898d088471f55e730a13c13b67aaa3373a50af66" },
+    "candidate_evidence": { "filename": "candidate_evidence.json", "sha256": "da6840fda0699efc646a1d6087dd822d780e3ac68cd67d33c9019d79ef67f168" }
+  }
+}
