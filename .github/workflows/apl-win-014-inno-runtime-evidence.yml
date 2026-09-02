@@ -1,0 +1,137 @@
+name: APL-WIN-014 Inno Runtime Evidence
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - fix/inno-runtime-citool-timeout
+
+permissions:
+  contents: read
+
+jobs:
+  capture-runtime:
+    runs-on: windows-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.14'
+
+      - name: Install exact runtime-evidence dependency
+        shell: pwsh
+        run: |
+          python -m pip install -r tools/bootstrap/apl-win-014/requirements-runtime-evidence.txt
+          python --version
+          python -m pip show pefile
+
+      - name: Download sealed R3 transport
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          gh release download apl-win-014-v10.6.4-bootstrap-transfer-r3 --repo arvectum1/proxy-launcher --pattern apl-win-014-v10.6.4-bootstrap-r3.zip --output "$env:RUNNER_TEMP\r3.zip"
+          if ((Get-FileHash -LiteralPath "$env:RUNNER_TEMP\r3.zip" -Algorithm SHA256).Hash -ine 'a1de9ea091b8d1fda768ea646b027be0a1976e9dc8fa32faedb12a86a263efed') { throw 'R3 transport SHA256 mismatch.' }
+          Expand-Archive -LiteralPath "$env:RUNNER_TEMP\r3.zip" -DestinationPath "$env:RUNNER_TEMP\r3" -Force
+          $candidate = "$env:RUNNER_TEMP\r3\candidate"
+          if ((Get-FileHash -LiteralPath "$candidate\Arvectum-Proxy-Launcher-0.2.3-windows-x64-setup.exe" -Algorithm SHA256).Hash -ine '7e7640fe434067415840a154cfbeba0df443caf155fed38cff7ede1bc7d7d600') { throw 'Sealed setup SHA256 mismatch.' }
+          if ((Get-FileHash -LiteralPath "$candidate\Arvectum Proxy Launcher.exe" -Algorithm SHA256).Hash -ine '559ae4d4a174ba03c0d649d04d6f494e89bade7f16acbeead8e3e7bec73fc932') { throw 'Sealed application SHA256 mismatch.' }
+
+      - name: Install exact Inno Setup 6.7.1 reference
+        shell: pwsh
+        run: |
+          choco install innosetup --version=6.7.1 --no-progress -y
+          choco install innoextract --version=1.9.0 --no-progress -y
+
+      - name: Capture exact child setup runtime
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $inno = Join-Path ${env:ProgramFiles(x86)} 'Inno Setup 6'
+          $iscc = Join-Path $inno 'ISCC.exe'
+          $setupE32 = Join-Path $inno 'Setup.e32'
+          $setupLdrE32 = Join-Path $inno 'SetupLdr.e32'
+          foreach ($path in @($iscc, $setupE32, $setupLdrE32)) { if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { throw "Missing exact Inno reference file: $path" } }
+          $probe = Join-Path $env:RUNNER_TEMP 'inno-671-probe.iss'
+          @"
+          #if Ver != 0x06070100
+          #error ARVECTUM_INNO_VERSION_MISMATCH_EXPECTED_6_7_1
+          #endif
+          [Setup]
+          AppName=InnoVersionProbe
+          AppVersion=1.0
+          DefaultDirName={tmp}\InnoVersionProbe
+          Output=no
+          "@ | Set-Content -LiteralPath $probe -Encoding utf8
+          & $iscc /Q $probe
+          if ($LASTEXITCODE -ne 0) { throw 'ISCC did not satisfy the exact Inno Setup 6.7.1 PREPROCVER contract.' }
+          $evidenceDir = Join-Path $env:RUNNER_TEMP 'inno-runtime-evidence'
+          $installDir = Join-Path $env:RUNNER_TEMP 'inno-runtime-install'
+          New-Item -ItemType Directory -Path $evidenceDir -Force | Out-Null
+          $outerPath = "$env:RUNNER_TEMP\r3\candidate\Arvectum-Proxy-Launcher-0.2.3-windows-x64-setup.exe"
+          & innoextract --version | Set-Content -LiteralPath (Join-Path $evidenceDir 'innoextract-version.txt') -Encoding utf8
+          & innoextract --list $outerPath 2>&1 | Set-Content -LiteralPath (Join-Path $evidenceDir 'innoextract-list.txt') -Encoding utf8
+          $arguments = @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/SP-', ('/DIR="' + $installDir + '"'))
+          $outer = Start-Process -FilePath $outerPath -ArgumentList $arguments -PassThru
+          $deadline = (Get-Date).AddSeconds(60)
+          $captured = $null
+          while ((Get-Date) -lt $deadline -and $null -eq $captured) {
+            $processes = @(Get-CimInstance Win32_Process)
+            foreach ($process in $processes) {
+              if ($process.ProcessId -eq $outer.Id -or [string]::IsNullOrWhiteSpace($process.ExecutablePath)) { continue }
+              if ($process.ExecutablePath -notmatch '\\is-[^\\]+\.tmp\\.*setup\.tmp$') { continue }
+              $parent = $process.ParentProcessId
+              $descended = $false
+              while ($parent -and -not $descended) {
+                if ($parent -eq $outer.Id) { $descended = $true; break }
+                $ancestor = @($processes | Where-Object { $_.ProcessId -eq $parent })
+                if ($ancestor.Count -ne 1) { break }
+                $parent = $ancestor[0].ParentProcessId
+              }
+              if ($descended -and (Test-Path -LiteralPath $process.ExecutablePath -PathType Leaf)) {
+                $copy = Join-Path $evidenceDir 'inno-setup-6.7.1-runtime-stub.exe'
+                Copy-Item -LiteralPath $process.ExecutablePath -Destination $copy -Force
+                $captured = [ordered]@{ original_path=$process.ExecutablePath; child_pid=$process.ProcessId; parent_pid=$process.ParentProcessId; copy=$copy }
+                break
+              }
+            }
+            Start-Sleep -Milliseconds 100
+          }
+          $outer.WaitForExit()
+          if ($null -eq $captured) { throw 'No descendant Inno child setup.tmp runtime was captured within 60 seconds.' }
+          $runtime = Get-Item -LiteralPath $captured.copy
+          $runtimeHash = (Get-FileHash -LiteralPath $runtime.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+          $static = Get-Item -LiteralPath $setupE32
+          $staticHash = (Get-FileHash -LiteralPath $static.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+          $staticEqualsBehavioral = ($runtime.Length -eq $static.Length -and $runtimeHash -eq $staticHash)
+          [ordered]@{
+            schema='arvectum.proxy.apl-win-014-v10.6.4-runtime-capture.v1'
+            task='APL-WIN-014'
+            ci_runner_image=$env:ImageOS
+            sealed_setup_sha256='7e7640fe434067415840a154cfbeba0df443caf155fed38cff7ede1bc7d7d600'
+            inno_setup_version='6.7.1'
+            iscc=[ordered]@{ size=(Get-Item -LiteralPath $iscc).Length; sha256=(Get-FileHash -LiteralPath $iscc -Algorithm SHA256).Hash.ToLowerInvariant() }
+            setup_e32=[ordered]@{ size=$static.Length; sha256=$staticHash }
+            setupldr_e32=[ordered]@{ size=(Get-Item -LiteralPath $setupLdrE32).Length; sha256=(Get-FileHash -LiteralPath $setupLdrE32 -Algorithm SHA256).Hash.ToLowerInvariant() }
+            behavioral=[ordered]@{ original_path=$captured.original_path; child_pid=$captured.child_pid; parent_pid=$captured.parent_pid; size=$runtime.Length; sha256=$runtimeHash }
+            static_equals_behavioral=$staticEqualsBehavioral
+            product_rebuilt=$false
+            candidate_rerun=$false
+          } | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $evidenceDir 'runtime-capture-evidence.json') -Encoding UTF8
+          python tools/bootstrap/apl-win-014/extract_inno_6_7_1_runtime.py $outerPath (Join-Path $evidenceDir 'static-runtime.exe') --evidence (Join-Path $evidenceDir 'runtime-static-evidence.json')
+          $staticDerived = Get-Item -LiteralPath (Join-Path $evidenceDir 'static-runtime.exe')
+          $staticDerivedHash = (Get-FileHash -LiteralPath $staticDerived.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($staticDerived.Length -ne 4473344 -or $staticDerivedHash -ne 'b37446a70e4ce841b58c1fcc35edd1295769184e5e9206188a3949ed02dc76d8') { throw 'Static sealed-setup derivation does not match the accepted behavioral anchor.' }
+          if ($staticDerived.Length -ne $runtime.Length -or $staticDerivedHash -ne $runtimeHash) { throw 'Static sealed-setup derivation does not byte-equal behavioral runtime capture.' }
+          Remove-Item -LiteralPath $installDir -Recurse -Force -ErrorAction SilentlyContinue
+
+      - name: Upload runtime evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: apl-win-014-inno-runtime-evidence
+          path: ${{ runner.temp }}/inno-runtime-evidence
+          if-no-files-found: warn
