@@ -6,7 +6,10 @@ Compression.Base.pas. Inno Setup is licensed under the Inno Setup License.
 """
 import argparse, hashlib, json, lzma, struct, sys, zlib
 from pathlib import Path
-import pefile
+try:
+    import pefile
+except ModuleNotFoundError as exc:
+    raise SystemExit("Missing required evidence dependency: pefile==2024.8.26") from exc
 
 TABLE_ID = b"rDlPtS\xcd\xe6\xd7\x7b\x0b\x2a"
 TABLE_VERSION = 2
