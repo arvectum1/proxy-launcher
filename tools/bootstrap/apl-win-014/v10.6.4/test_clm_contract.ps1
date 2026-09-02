@@ -25,7 +25,14 @@ foreach ($script in $production) {
         @{ pattern='\[guid\]'; name='Guid cast' },
         @{ pattern='\[IO\.'; name='System.IO static API' },
         @{ pattern='\[Environment\]::'; name='Environment static API' },
-        @{ pattern='Add-Type|Invoke-Expression'; name='dynamic code API' }
+        @{ pattern='Add-Type|Invoke-Expression'; name='dynamic code API' },
+        @{ pattern='SHA256\]::Create'; name='SHA256.Create()' },
+        @{ pattern='ReadAllBytes|ReadAllText|ReadAllLines'; name='File read-all API' },
+        @{ pattern='ComputeHash'; name='ComputeHash API' },
+        @{ pattern='BitConverter'; name='BitConverter API' },
+        @{ pattern='\[IO\.Path\]::GetFullPath'; name='Path.GetFullPath' },
+        @{ pattern='Get-Content.*-Raw.*\.Split\('; name='pipeline split' },
+        @{ pattern='Get-Content.*-Raw.*\.Trim'; name='pipeline trim' }
     )) {
         if ($text -match $rule.pattern) { throw "$($script.Name) uses CLM-unsafe $($rule.name)." }
     }

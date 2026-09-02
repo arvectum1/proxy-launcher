@@ -5,11 +5,12 @@
 param([string]$CandidateRoot = '')
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+$scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+. (Join-Path $scriptDir 'configci_xml_validation.ps1')
+. (Join-Path $scriptDir 'reference_collection_helpers.ps1')
 $basePolicyIdText = 'dc1c604c-46ea-40b7-9f47-cf582b225d5e'
 $policyFriendlyName = 'Arvectum APL-WIN-014 Harness V10.6.4 Bootstrap'
 $policyVersion = '10.0.0.17'
-$scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
-. (Join-Path $scriptDir 'configci_xml_validation.ps1')
 if ([string]::IsNullOrWhiteSpace($CandidateRoot)) { throw 'CandidateRoot is required; this script never prompts.' }
 if (-not (Test-Path -LiteralPath $CandidateRoot -PathType Container)) { throw "CandidateRoot not found: $CandidateRoot" }
 function Get-Sha256([string]$Path) {
@@ -28,9 +29,8 @@ foreach ($entry in @($hashes.files.setup, $hashes.files.application, $hashes.fil
     if ((Get-Sha256 $path) -ine $entry.sha256) { throw "Sealed candidate hash mismatch: $($entry.filename)" }
 }
 foreach ($command in @('New-CIPolicy','Set-CIPolicyIdInfo','Set-CIPolicyVersion','ConvertFrom-CIPolicy','CiTool.exe')) { if (-not (Get-Command $command -ErrorAction SilentlyContinue)) { throw "Required command not found: $command" } }
-$policies = (& CiTool.exe -lp -json 2>$null | ConvertFrom-Json)
-$base = @($policies.Policies | Where-Object { $_.PolicyID -eq $basePolicyIdText })
-if ($policies.OperationResult -ne 0 -or $base.Count -ne 1 -or $base[0].IsOnDisk -ne $true -or $base[0].IsEnforced -ne $true -or $base[0].IsAuthorized -ne $true) { throw 'Canonical Lab Base validation failed closed.' }
+$policyEvi = Get-ClmPolicyEvidence -ExpectedBasePolicyId $basePolicyIdText -ExpectedBootstrapPolicyId $hashes.base_policy_id -ExpectedBootstrapFriendlyName $policyFriendlyName
+Test-ClmBasePolicyInvariant -Policy $policyEvi.base -ExpectedPolicyId $basePolicyIdText -ExpectedBasePolicyId $basePolicyIdText -ExpectedFriendlyName 'Arvectum APL-WIN-014 Lab Base'
 $outDir = Join-Path $scriptDir ("v10.6.4-authoring-" + (Get-Date -Format 'yyyyMMdd-HHmmss'))
 $scanDir = Join-Path $outDir 'scan'
 New-Item -ItemType Directory -Path $scanDir -Force | Out-Null
@@ -47,6 +47,21 @@ Test-ConfigCiSupplementalXml -XmlPath $xml -PolicyId $policyId -BasePolicyId $ba
 $cip = Join-Path $outDir (("{" + ($policyId -replace '[{}]','') + "}.cip"))
 ConvertFrom-CIPolicy -XmlFilePath $xml -BinaryFilePath $cip
 if (-not (Test-Path -LiteralPath $cip -PathType Leaf)) { throw 'ConfigCI did not create the binary supplemental policy.' }
-[ordered]@{ schema='arvectum.proxy.apl-win-014-v10.6.4-bootstrap-authoring.v2'; candidate_source_commit=$hashes.candidate_source_commit; candidate_artifact_id=$hashes.candidate_artifact_id; base_policy_id=$basePolicyIdText; supplemental_policy_id=$policyId; supplemental_policy_friendly_name=$policyFriendlyName; supplemental_policy_version=$policyVersion; supplemental_policy_cip=(Split-Path -Leaf $cip); supplemental_policy_cip_sha256=(Get-Sha256 $cip); deployment='NOT PERFORMED' } | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $outDir 'authoring-evidence.json') -Encoding UTF8
+$xmlSha256 = Get-Sha256 $xml
+$cipSha256 = Get-Sha256 $cip
+[ordered]@{
+    schema='arvectum.proxy.apl-win-014-v10.6.4-bootstrap-authoring.v3'
+    candidate_source_commit=$hashes.candidate_source_commit
+    candidate_artifact_id=$hashes.candidate_artifact_id
+    base_policy_id=$basePolicyIdText
+    supplemental_policy_id=$policyId
+    supplemental_policy_friendly_name=$policyFriendlyName
+    supplemental_policy_version=$policyVersion
+    supplemental_policy_xml=(Split-Path -Leaf $xml)
+    supplemental_policy_xml_sha256=$xmlSha256
+    supplemental_policy_cip=(Split-Path -Leaf $cip)
+    supplemental_policy_cip_sha256=$cipSha256
+    deployment='NOT PERFORMED'
+} | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $outDir 'authoring-evidence.json') -Encoding UTF8
 "$(Get-Sha256 $xml)  $(Split-Path -Leaf $xml)`n$(Get-Sha256 $cip)  $(Split-Path -Leaf $cip)" | Set-Content -LiteralPath (Join-Path $outDir 'SHA256SUMS.txt') -Encoding ASCII
 Write-Host "AUTHORING COMPLETE: $outDir (deployment not performed)"

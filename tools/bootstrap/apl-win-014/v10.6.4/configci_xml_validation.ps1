@@ -1,4 +1,4 @@
-<# Shared CLM-safe, fail-closed structural validation for generated ConfigCI XML. #>
+<# Shared CLM-safe, fail-closed structural validation for generated ConfigCI XML with supplemental semantics. #>
 function Test-ConfigCiSupplementalXml {
     [CmdletBinding()]
     param(
@@ -18,6 +18,13 @@ function Test-ConfigCiSupplementalXml {
     $baseIds = @($lines | Where-Object { $_ -match '<BasePolicyID>\s*([^<\s]+)\s*</BasePolicyID>' } | ForEach-Object { $matches[1] })
     if ($policyIds.Count -ne 1 -or $policyIds[0] -ine $PolicyId) { throw 'Generated ConfigCI XML PolicyID does not exactly match the authored PolicyID.' }
     if ($baseIds.Count -ne 1 -or $baseIds[0] -ine $BasePolicyId) { throw 'Generated ConfigCI XML BasePolicyID does not exactly match the canonical base.' }
+    if ($policyIds[0] -ieq $baseIds[0]) { throw 'Generated ConfigCI XML PolicyID and BasePolicyID must differ for a supplemental policy.' }
+    $hasSettings = $false
+    foreach ($line in $lines) { if ($line -match '<Settings>') { $hasSettings = $true } }
+    if (-not $hasSettings) { throw 'Generated ConfigCI XML is missing the Settings element required by multiple-policy format.' }
+    $hasUserSigningScenario = $false
+    foreach ($line in $lines) { if ($line -match '<SigningScenario\s+[^>]*Value="12"') { $hasUserSigningScenario = $true } }
+    if (-not $hasUserSigningScenario) { throw 'Generated ConfigCI XML is missing user-mode SigningScenario Value=12.' }
     if (@($lines | Where-Object { $_ -like "*$PolicyFriendlyName*" }).Count -eq 0) { throw 'Generated ConfigCI XML does not contain the expected policy friendly name.' }
     if ($ExpectedPolicyVersion -ne '' -and @($lines | Where-Object { $_ -match '<VersionEx>\s*([^<\s]+)\s*</VersionEx>' -and $matches[1] -eq $ExpectedPolicyVersion }).Count -ne 1) { throw 'Generated ConfigCI XML does not contain the expected policy version.' }
     $rules = @($lines | Where-Object { $_ -match '<Allow\s+[^>]*\bID="[^"]+"[^>]*\bFriendlyName="[^"]+"[^>]*\bHash="[^"]+"' })
