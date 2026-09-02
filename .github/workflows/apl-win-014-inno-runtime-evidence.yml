@@ -29,7 +29,9 @@ jobs:
 
       - name: Install exact Inno Setup 6.7.1 reference
         shell: pwsh
-        run: choco install innosetup --version=6.7.1 --no-progress -y
+        run: |
+          choco install innosetup --version=6.7.1 --no-progress -y
+          choco install innoextract --version=1.9.0 --no-progress -y
 
       - name: Capture exact child setup runtime
         shell: pwsh
@@ -57,6 +59,8 @@ jobs:
           $installDir = Join-Path $env:RUNNER_TEMP 'inno-runtime-install'
           New-Item -ItemType Directory -Path $evidenceDir -Force | Out-Null
           $outerPath = "$env:RUNNER_TEMP\r3\candidate\Arvectum-Proxy-Launcher-0.2.3-windows-x64-setup.exe"
+          & innoextract --version | Set-Content -LiteralPath (Join-Path $evidenceDir 'innoextract-version.txt') -Encoding utf8
+          & innoextract --list $outerPath 2>&1 | Set-Content -LiteralPath (Join-Path $evidenceDir 'innoextract-list.txt') -Encoding utf8
           $arguments = @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/SP-', ('/DIR="' + $installDir + '"'))
           $outer = Start-Process -FilePath $outerPath -ArgumentList $arguments -PassThru
           $deadline = (Get-Date).AddSeconds(60)
