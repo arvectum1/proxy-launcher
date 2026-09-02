@@ -22,8 +22,11 @@ class WindowsV1064SealingContractTests(unittest.TestCase):
         script = (ROOT / 'tools/bootstrap/apl-win-014/v10.6.4/validate_v10_6_4_candidate.ps1').read_text(encoding='utf-8-sig')
         for token in ('SHA256SUMS.txt', 'candidate evidence run ID', 'candidate evidence source commit', "'application_sha256'", 'real-stand help probe', 'Candidate installed application identity is not true.', 'observed GitHub run ID', 'observed GitHub artifact ID', 'observed GitHub artifact digest'):
             self.assertIn(token, script)
-        for parameter in ('ObservedRunId', 'ObservedRunAttempt', 'ObservedArtifactId', 'ObservedArtifactName', 'ObservedArtifactDigest', 'ObservedSourceCommit'):
-            self.assertIn(f'[Parameter(Mandatory)] [string]${parameter}', script)
+        for parameter in ('CandidateRoot', 'ObservedRunId', 'ObservedRunAttempt', 'ObservedArtifactId', 'ObservedArtifactName', 'ObservedArtifactDigest', 'ObservedSourceCommit'):
+            self.assertIn(f'[string]${parameter} =', script)
+        self.assertIn('certutil.exe', script)
+        self.assertNotIn('Get-FileHash', script)
+        self.assertNotIn('Parameter(Mandatory', script)
         self.assertNotIn('clean_build_windows.ps1', script)
         self.assertNotIn('build_windows_installer.ps1', script)
 
