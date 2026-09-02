@@ -2,6 +2,9 @@ name: APL-WIN-014 Inno Runtime Evidence
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - fix/inno-runtime-citool-timeout
 
 permissions:
   contents: read
