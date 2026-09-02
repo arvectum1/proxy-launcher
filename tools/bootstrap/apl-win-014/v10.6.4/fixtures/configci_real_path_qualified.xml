@@ -1,0 +1,19 @@
+<SiPolicy><PolicyID>{8B2309ED-EA37-4ABD-86D3-760ACC499274}</PolicyID><BasePolicyID>{DC1C604C-46EA-40B7-9F47-CF582B225D5E}</BasePolicyID><Settings><Setting>Arvectum APL-WIN-014 Fixture</Setting></Settings><FileRules>
+<Allow ID="ID_ALLOW_A_1" FriendlyName="C:\Arvectum\APL-WIN-014-v10.6.4-r1\payload\apl-win-014-v10.6.4-bootstrap-r1\stand-tooling\v10.6.4-authoring-20260902-134252\scan\Arvectum Proxy Launcher.exe Hash Sha256" Hash="01"/>
+<Allow ID="ID_ALLOW_A_2" FriendlyName="C:\Arvectum\APL-WIN-014-v10.6.4-r1\payload\apl-win-014-v10.6.4-bootstrap-r1\stand-tooling\v10.6.4-authoring-20260902-134252\scan\Arvectum Proxy Launcher.exe Hash Sha1" Hash="02"/>
+<Allow ID="ID_ALLOW_A_3" FriendlyName="C:\Arvectum\APL-WIN-014-v10.6.4-r1\payload\apl-win-014-v10.6.4-bootstrap-r1\stand-tooling\v10.6.4-authoring-20260902-134252\scan\Arvectum Proxy Launcher.exe Hash Page Sha256" Hash="03"/>
+<Allow ID="ID_ALLOW_A_4" FriendlyName="C:\Arvectum\APL-WIN-014-v10.6.4-r1\payload\apl-win-014-v10.6.4-bootstrap-r1\stand-tooling\v10.6.4-authoring-20260902-134252\scan\Arvectum Proxy Launcher.exe Hash Page Sha1" Hash="04"/>
+<Allow ID="ID_ALLOW_A_5" FriendlyName="C:\Arvectum\APL-WIN-014-v10.6.4-r1\payload\apl-win-014-v10.6.4-bootstrap-r1\stand-tooling\v10.6.4-authoring-20260902-134252\scan\Arvectum-Proxy-Launcher-0.2.3-windows-x64-setup.exe Hash Sha256" Hash="05"/>
+<Allow ID="ID_ALLOW_A_6" FriendlyName="C:\Arvectum\APL-WIN-014-v10.6.4-r1\payload\apl-win-014-v10.6.4-bootstrap-r1\stand-tooling\v10.6.4-authoring-20260902-134252\scan\Arvectum-Proxy-Launcher-0.2.3-windows-x64-setup.exe Hash Sha1" Hash="06"/>
+<Allow ID="ID_ALLOW_A_7" FriendlyName="C:\Arvectum\APL-WIN-014-v10.6.4-r1\payload\apl-win-014-v10.6.4-bootstrap-r1\stand-tooling\v10.6.4-authoring-20260902-134252\scan\Arvectum-Proxy-Launcher-0.2.3-windows-x64-setup.exe Hash Page Sha256" Hash="07"/>
+<Allow ID="ID_ALLOW_A_8" FriendlyName="C:\Arvectum\APL-WIN-014-v10.6.4-r1\payload\apl-win-014-v10.6.4-bootstrap-r1\stand-tooling\v10.6.4-authoring-20260902-134252\scan\Arvectum-Proxy-Launcher-0.2.3-windows-x64-setup.exe Hash Page Sha1" Hash="08"/>
+</FileRules><SigningScenarios><SigningScenario Value="12"><ProductSigners><FileRulesRef>
+<FileRuleRef RuleID="ID_ALLOW_A_1"/>
+<FileRuleRef RuleID="ID_ALLOW_A_2"/>
+<FileRuleRef RuleID="ID_ALLOW_A_3"/>
+<FileRuleRef RuleID="ID_ALLOW_A_4"/>
+<FileRuleRef RuleID="ID_ALLOW_A_5"/>
+<FileRuleRef RuleID="ID_ALLOW_A_6"/>
+<FileRuleRef RuleID="ID_ALLOW_A_7"/>
+<FileRuleRef RuleID="ID_ALLOW_A_8"/>
+</FileRulesRef></ProductSigners></SigningScenario></SigningScenarios></SiPolicy>

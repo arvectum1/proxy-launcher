@@ -1,4 +1,4 @@
-<# Fixture regression test for ConfigCI Allow Hash attributes, supplemental semantics, and GUID normalization. #>
+<# Fixture regression test for ConfigCI Allow Hash attributes, supplemental semantics, GUID normalization, and path-qualified FriendlyNames. #>
 #Requires -Version 5.1
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
@@ -22,6 +22,71 @@ Write-Host '  PASS: braced uppercase BasePolicyID vs unbraced expected'
 # --- Braced PolicyID normalization ---
 Test-ConfigCiSupplementalXml -XmlPath $bracedFixture -PolicyId '{25374C9F-D7EF-448E-8F4B-C99959061E86}' -BasePolicyId '{DC1C604C-46EA-40B7-9F47-CF582B225D5E}' -PolicyFriendlyName 'Arvectum APL-WIN-014 Fixture' -ExpectedHashRuleFileNames @('Arvectum Proxy Launcher.exe', 'Arvectum-Proxy-Launcher-setup.exe') | Out-Null
 Write-Host '  PASS: braced PolicyID normalization'
+
+# --- Path-qualified fixture (real Windows ConfigCI form) ---
+$pathQualifiedFixture = Join-Path $fixtures 'configci_real_path_qualified.xml'
+Test-ConfigCiSupplementalXml -XmlPath $pathQualifiedFixture -PolicyId '{8B2309ED-EA37-4ABD-86D3-760ACC499274}' -BasePolicyId '{DC1C604C-46EA-40B7-9F47-CF582B225D5E}' -PolicyFriendlyName 'Arvectum APL-WIN-014 Fixture' -ExpectedHashRuleFileNames @('Arvectum Proxy Launcher.exe', 'Arvectum-Proxy-Launcher-0.2.3-windows-x64-setup.exe') | Out-Null
+Write-Host '  PASS: path-qualified fixture'
+
+# --- Wrong leaf filename (must fail) ---
+$wrongLeafXml = Join-Path $fixtures 'configci_wrong_leaf.xml'
+$wrongLeafContent = $fixture -replace '<Allow ID="ID_ALLOW_A_1" FriendlyName="Arvectum Proxy Launcher.exe Hash Sha256"', '<Allow ID="ID_ALLOW_A_1" FriendlyName="C:\scan\evil-Arvectum Proxy Launcher.exe Hash Sha256"'
+Set-Content -LiteralPath $wrongLeafXml -Value $wrongLeafContent -Encoding UTF8
+$wrongLeafFailed = $false
+try { Test-ConfigCiSupplementalXml -XmlPath $wrongLeafXml -PolicyId '{11111111-1111-1111-1111-111111111111}' -BasePolicyId 'dc1c604c-46ea-40b7-9f47-cf582b225d5e' -PolicyFriendlyName 'Arvectum APL-WIN-014 Fixture' -ExpectedHashRuleFileNames @('Arvectum Proxy Launcher.exe', 'Arvectum-Proxy-Launcher-setup.exe') } catch { $wrongLeafFailed = $true }
+if (-not $wrongLeafFailed) { throw 'Validator accepted wrong leaf filename.' }
+Remove-Item -LiteralPath $wrongLeafXml -Force -ErrorAction SilentlyContinue
+Write-Host '  PASS: wrong leaf rejected'
+
+# --- Expected name only in directory (must fail) ---
+$dirOnlyXml = Join-Path $fixtures 'configci_dir_only.xml'
+$dirOnlyContent = $fixture -replace '<Allow ID="ID_ALLOW_A_1" FriendlyName="Arvectum Proxy Launcher.exe Hash Sha256"', '<Allow ID="ID_ALLOW_A_1" FriendlyName="C:\Arvectum Proxy Launcher.exe Hash Sha256\evil.exe Hash Sha256"'
+Set-Content -LiteralPath $dirOnlyXml -Value $dirOnlyContent -Encoding UTF8
+$dirOnlyFailed = $false
+try { Test-ConfigCiSupplementalXml -XmlPath $dirOnlyXml -PolicyId '{11111111-1111-1111-1111-111111111111}' -BasePolicyId 'dc1c604c-46ea-40b7-9f47-cf582b225d5e' -PolicyFriendlyName 'Arvectum APL-WIN-014 Fixture' -ExpectedHashRuleFileNames @('Arvectum Proxy Launcher.exe', 'Arvectum-Proxy-Launcher-setup.exe') } catch { $dirOnlyFailed = $true }
+if (-not $dirOnlyFailed) { throw 'Validator accepted expected name only in directory.' }
+Remove-Item -LiteralPath $dirOnlyXml -Force -ErrorAction SilentlyContinue
+Write-Host '  PASS: expected name only in directory rejected'
+
+# --- Wrong hash variant (must fail) ---
+$wrongVariantXml = Join-Path $fixtures 'configci_wrong_variant.xml'
+$wrongVariantContent = $fixture -replace 'FriendlyName="Arvectum Proxy Launcher.exe Hash Sha256"', 'FriendlyName="Arvectum Proxy Launcher.exe Hash SHA512"'
+Set-Content -LiteralPath $wrongVariantXml -Value $wrongVariantContent -Encoding UTF8
+$wrongVariantFailed = $false
+try { Test-ConfigCiSupplementalXml -XmlPath $wrongVariantXml -PolicyId '{11111111-1111-1111-1111-111111111111}' -BasePolicyId 'dc1c604c-46ea-40b7-9f47-cf582b225d5e' -PolicyFriendlyName 'Arvectum APL-WIN-014 Fixture' -ExpectedHashRuleFileNames @('Arvectum Proxy Launcher.exe', 'Arvectum-Proxy-Launcher-setup.exe') } catch { $wrongVariantFailed = $true }
+if (-not $wrongVariantFailed) { throw 'Validator accepted wrong hash variant.' }
+Remove-Item -LiteralPath $wrongVariantXml -Force -ErrorAction SilentlyContinue
+Write-Host '  PASS: wrong variant rejected'
+
+# --- Extra hash variant (must fail) ---
+$extraVariantXml = Join-Path $fixtures 'configci_extra_variant.xml'
+$extraVariantContent = $fixture -replace '<Allow ID="ID_ALLOW_A_1" FriendlyName="Arvectum Proxy Launcher.exe Hash Sha256" Hash="01"/>', '<Allow ID="ID_ALLOW_A_1" FriendlyName="Arvectum Proxy Launcher.exe Hash Sha256" Hash="01"/><Allow ID="ID_ALLOW_A_9" FriendlyName="Arvectum Proxy Launcher.exe Hash MD5" Hash="09"/>'
+Set-Content -LiteralPath $extraVariantXml -Value $extraVariantContent -Encoding UTF8
+$extraVariantFailed = $false
+try { Test-ConfigCiSupplementalXml -XmlPath $extraVariantXml -PolicyId '{11111111-1111-1111-1111-111111111111}' -BasePolicyId 'dc1c604c-46ea-40b7-9f47-cf582b225d5e' -PolicyFriendlyName 'Arvectum APL-WIN-014 Fixture' -ExpectedHashRuleFileNames @('Arvectum Proxy Launcher.exe', 'Arvectum-Proxy-Launcher-setup.exe') } catch { $extraVariantFailed = $true }
+if (-not $extraVariantFailed) { throw 'Validator accepted extra hash variant.' }
+Remove-Item -LiteralPath $extraVariantXml -Force -ErrorAction SilentlyContinue
+Write-Host '  PASS: extra variant rejected'
+
+# --- Duplicate variant (must fail) ---
+$dupVariantXml = Join-Path $fixtures 'configci_dup_variant.xml'
+$dupVariantContent = $fixture -replace '<Allow ID="ID_ALLOW_A_2" FriendlyName="Arvectum Proxy Launcher.exe Hash Sha1" Hash="02"/>', '<Allow ID="ID_ALLOW_A_2" FriendlyName="Arvectum Proxy Launcher.exe Hash Sha256" Hash="02b"/>'
+Set-Content -LiteralPath $dupVariantXml -Value $dupVariantContent -Encoding UTF8
+$dupVariantFailed = $false
+try { Test-ConfigCiSupplementalXml -XmlPath $dupVariantXml -PolicyId '{11111111-1111-1111-1111-111111111111}' -BasePolicyId 'dc1c604c-46ea-40b7-9f47-cf582b225d5e' -PolicyFriendlyName 'Arvectum APL-WIN-014 Fixture' -ExpectedHashRuleFileNames @('Arvectum Proxy Launcher.exe', 'Arvectum-Proxy-Launcher-setup.exe') } catch { $dupVariantFailed = $true }
+if (-not $dupVariantFailed) { throw 'Validator accepted duplicate variant.' }
+Remove-Item -LiteralPath $dupVariantXml -Force -ErrorAction SilentlyContinue
+Write-Host '  PASS: duplicate variant rejected'
+
+# --- Unexpected ninth rule (must fail) ---
+$ninthRuleXml = Join-Path $fixtures 'configci_ninth_rule.xml'
+$ninthRuleContent = $fixture -replace '</FileRules>', '<Allow ID="ID_ALLOW_A_9" FriendlyName="unexpected.exe Hash Sha256" Hash="09"/></FileRules>'
+Set-Content -LiteralPath $ninthRuleXml -Value $ninthRuleContent -Encoding UTF8
+$ninthRuleFailed = $false
+try { Test-ConfigCiSupplementalXml -XmlPath $ninthRuleXml -PolicyId '{11111111-1111-1111-1111-111111111111}' -BasePolicyId 'dc1c604c-46ea-40b7-9f47-cf582b225d5e' -PolicyFriendlyName 'Arvectum APL-WIN-014 Fixture' -ExpectedHashRuleFileNames @('Arvectum Proxy Launcher.exe', 'Arvectum-Proxy-Launcher-setup.exe') } catch { $ninthRuleFailed = $true }
+if (-not $ninthRuleFailed) { throw 'Validator accepted unexpected ninth rule.' }
+Remove-Item -LiteralPath $ninthRuleXml -Force -ErrorAction SilentlyContinue
+Write-Host '  PASS: unexpected ninth rule rejected'
 
 # --- Self-referencing PolicyID/BasePolicyID (must fail) ---
 $selfRefXml = Join-Path $fixtures 'configci_self_reference.xml'
